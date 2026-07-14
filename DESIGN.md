@@ -252,3 +252,83 @@ All audio from one AudioContext. Chain: `sounds → DelayNode (feedback 0.3, wet
 - [ ] Average tester dies at 20–40 hits with a 25–30% perfect rate; at least 2–3 perfects tasted per run from run one.
 - [ ] Perfects on mobile are not dramatically rarer than desktop; if they are, apply a hidden constant +20ms verdict offset on coarse pointers and re-test.
 - [ ] Ten consecutive deaths in a row still produce the reflex tap-to-restart — if any tester reaches for the close button instead, the death→restart path has friction; find it and remove it.
+
+---
+
+# PART II — v2 EXPANSION SPEC
+
+v1 above is frozen as the core skill loop (Classic arc math, scoring, one-tap input, audiovisual language) and stays completely unchanged. Part II adds **layers around** that core to give it long-horizon dopamine hooks: session-to-session progression, variety within a run, and short daily/relaxed alternatives. Same hard constraints apply — one file, zero deps, Canvas 2D + WebAudio, Korean UI, **no currency-for-power, no gambling odds, no dark patterns**. Coins/XP are earned only by playing and spent only on cosmetics at fixed prices; nothing is ever sold or gacha'd.
+
+## 13. Meta-structure
+
+`TITLE/MENU` screen replaces the old bare title: same brush-stroke wordmark, but below it four tappable cards — **클래식 · 데일리 챌린지 · 젠 모드 · 도감** (Daily/도감 gate behind Lv.2, greyed with a lock badge until then). Still canvas-only, still one input primitive (`pointerdown`/`Space`/`Enter` — a "tap" is just tested against whichever button rect it lands in; this is menu navigation, not a second game mechanic). A settings gear (mute already existed top-right; reduced-motion + colorblind-safe palette toggles live in 도감 footer).
+
+States added: `ST_MENU`, `ST_COLLECTION`. `ST_PLAY` now carries a `mode` tag (`classic | daily | zen`) that the verdict/spawn/scoring layer branches on.
+
+## 14. Save schema v2
+
+Key `chalna_save_v2`. On first load, if v2 is absent and legacy `chalna_save_v1` exists, import `bestScore/bestStreak/lifetimePerfects/totalRuns` once (goodwill migration, then v1 key is left untouched/ignored thereafter).
+
+```json
+{
+  "bestScore": 0, "bestStreak": 0, "lifetimePerfects": 0, "totalRuns": 0,
+  "xp": 0, "level": 1, "coins": 0,
+  "achievements": { "first_perfect": true, "...": false },
+  "unlockedThemes": ["classic"], "unlockedTrails": ["classic"],
+  "activeTheme": "classic", "activeTrail": "classic",
+  "dailyBestByDate": { "2026-07-14": 725 }, "dailyStreak": 0, "lastDailyDate": "",
+  "zenBest": 0,
+  "ghost": [{ "t": 0.0, "a": 12.4 }],
+  "settings": { "reduceMotion": false, "colorblind": false }
+}
+```
+Same try/catch-degrade-silently rule as v1. Written on every run end, level-up, achievement unlock, and cosmetic purchase.
+
+## 15. Progression math
+
+**XP per run:** `floor(score/8) + runPerfects*3 + chainClears*10`, at **40%** rate in Zen (rounded down), full rate in Classic/Daily.
+**Level curve:** level *L*→*L+1* costs `80 + 40*L` XP (cumulative ladder walked on every XP gain). Level-up triggers a banner + `sMilestone`-family stinger, same juice grammar as the 10-hit milestone.
+**Coins:** `floor(hits/5)` per run, all modes, no rate change. Spent only in 도감 at fixed prices — no discounts, no timers, no "today only".
+
+**Unlock ladder (by Level, auto-granted; 도감 lets coins buy the *cosmetic* half early):**
+| Lv | Unlocks |
+|---|---|
+| 1 | Classic, Zen, 기본(Navy/Gold) theme |
+| 2 | 데일리 챌린지 mode, 도감 |
+| 3 | Wobble arcs · 선셋 theme (or 80 coins early) |
+| 5 | Shrink arcs · 모노 theme (high-contrast, accessibility-first) |
+| 8 | Decoy arcs · 네온 theme + alt needle trail |
+| 12 | Chain arcs · prism trail |
+
+## 16. New arc modifiers (Classic + Daily only; Zen uses whatever the player has already unlocked)
+
+At most **one** geometry modifier per arc (never combined with each other; gold-jackpot is a payout/color flag and also never combines with a geometry modifier, to keep every arc read-at-a-glance). Chain is a separate spawn event that replaces normal spawning outright when it triggers.
+
+- **동요 (Wobble)** — Lv.3, ~20% of eligible spawns (hits≥6). Center drifts: `center(t) = spawn + 5° · sin(TAU·f·t + φ)`, `f = 1.1 + 0.02·min(hits,40)` Hz. Verdict always reads the *live* center. Sound: a soft breathing tremolo under the normal click-accelerando.
+- **수축 (Shrink)** — Lv.5, ~20% of eligible spawns (hits≥6). Perfect band only: `P(t) = lerp(1.35·P0, 0.65·P0, clamp(travel/dist0,0,1))` — visibly closes as the needle nears. Good band untouched. Sound: a rising 8th-note tick as it closes.
+- **디코이 (Decoy)** — Lv.8, ~25% of eligible spawns (hits≥10), never on a gold spawn. A second, desaturated, **dashed** cyan arc (texture-coded, not just color) appears between the needle and the real arc: `decoyCenter = needle + dir·rand(35°,70°)`, `decoyWidth = A(n)·0.75`, resampled up to 5× to keep ≥12° clearance from the real arc. Tapping inside it while outside the real arc is an instant MISS with its own taunt ("미끼 아크에 속았다!") and a distinct short "gotcha" buzz — never confused with the real-arc miss sound.
+- **체인 (Chain)** — Lv.12, from hits≥15, 1-in-10 instead of a normal spawn. Three links, same travel direction throughout (no reversal mid-chain): each `w = goodW(n)·0.6`, `p = perfW(n)` (perfect floor unchanged), `dist0 = rand(40°,70°)`. All three PERFECT → **"체인!"** finisher: `+150·mult(streak)` flat bonus, gold-nova visual, ascending 3-note stinger with a bell tail. A GOOD on any link ends the chain early (falls back to a normal single arc, direction reverses as usual); a MISS on any link ends the run exactly like a normal miss — chains raise the stakes, they don't soften them.
+
+## 17. Daily Seed Challenge
+
+Seed = `mulberry32(hash("chalna-" + KST_date))`. That PRNG instance — not `Math.random` — drives every RNG decision inside `spawnArc` for the run (gold roll, modifier roll, `dist0`, decoy placement, chain trigger), so every player who plays on a given date is offered the *identical arc sequence*; only their timing differs. Unlimited retries per day; `dailyBestByDate[today]` keeps the best. `dailyStreak` increments if `lastDailyDate === yesterday`, else resets to 1 — shown as a small flame + count on the mode card. No XP/coin bonus beyond the standard run reward; the hook is purely "same puzzle as everyone today, beat yesterday's ghost."
+
+## 18. Zen Mode
+
+Fixed 60s timer, no death: a MISS is scored and juiced like a GOOD (streak reset, brief "아쉬워요" flash) instead of ending the run, so the loop never breaks — built for low-pressure flow/practice. Ends at 0:00 with the normal results panel. Tracked separately as `zenBest`, never touches `bestScore`/`bestStreak` so a relaxed session can't be mistaken for a real run.
+
+## 19. Ghost replay (Classic only)
+
+Whenever a Classic run sets a new `bestScore`, its needle angle is sampled at ~20Hz into `ghost` (capped ~2400 samples). On every later Classic run, a second needle is drawn at 25% alpha, thin and dashed, interpolated from `ghost` at the current run's elapsed time — purely visual, never read for verdicts, and it simply fades out once the live run either dies or outlasts the recorded length. This is the "race your own best" hook Part I's design explicitly left out; it stays cosmetic so it can't be accused of moving the goalposts.
+
+## 20. Achievements (~18, first-class dopamine hits of their own)
+
+Each is a one-time toast (slide-in top banner, 2.2s, queued if several fire in the same frame) + a permanent tile in 도감. Examples: `first_perfect`, `streak_10`, `streak_20`, `fever_first`, `gold_first`, `chain_clear`, `decoy_fooled` (yes — the *first* time you get fooled is itself an achievement, so the sting doubles as a reward), `lifetime_100`, `lifetime_1000`, `runs_50`, `near_miss_1ms`, `daily_first_play`, `daily_streak_7`, `zen_complete`, `level_5`, `level_10`, `level_12_max`, `record_x5`, `coins_100_spent`.
+
+## 21. Cosmetics
+
+Theme = `{bg, bgFever, needle, good, perfect}` palette swap, applied everywhere v1 used `COL.*`. Every theme keeps the cyan/gold good/perfect pairing (never reassigned to a third hue) so the triple-encoding rule from §9 holds regardless of skin. 모노 theme is the accessibility pick: near-black/white/gold only, maximum contrast, meant to be the recommended default for colorblind players even though decoy/shrink/etc. already avoid hue-only signaling.
+
+## 22. Cut list (v2)
+
+No real-money anything, no ads, no social/share/network features, no PvP or online leaderboard (daily "streak vs yesterday" stays local), no energy/stamina gating replay, no loot-box style randomness on cosmetics (fixed price, fixed catalog, always visible even when locked so there's no mystery-box tension).

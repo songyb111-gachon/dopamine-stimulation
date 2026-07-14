@@ -31,8 +31,8 @@
 'use strict';
 
 /* ================================================================
-   찰나 (CHALNA) — one-tap timing game. Single file, zero deps.
-   All angles in degrees; 0° = 12 o'clock, clockwise positive.
+   찰나 (CHALNA) v2 — one-tap timing game + meta-progression.
+   Single file, zero deps. All angles in degrees; 0° = 12 o'clock, clockwise positive.
    ================================================================ */
 
 const TAU = Math.PI * 2;
@@ -48,12 +48,24 @@ const easeOut = t => 1 - (1 - t) * (1 - t);
 
 const FONT = '-apple-system, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
 
+// semantic (non-themed) colors — meaning stays fixed regardless of cosmetic theme
 const COL = {
-  bg: '#0A0E1A', bgFever: '#2A0A2E',
-  needle: '#F5F7FA',
-  good: '#39C5E8', perfect: '#FFC940', gold: '#FFC940',
-  goodFx: '#5A8DEE', miss: '#FF5A5A', gray: '#8A93A6',
-  white: '#FFFFFF',
+  goodFx: '#5A8DEE', miss: '#FF5A5A', gray: '#8A93A6', white: '#FFFFFF',
+  fever: '#FF6AD5', ach: '#C9A6FF', decoy: '#4C6270',
+};
+
+// themed palette — bg/needle/good/perfect swap per cosmetic; good stays cyan-family,
+// perfect stays gold-family everywhere so the triple-encoded meaning never changes.
+const THEMES = {
+  classic: { name: '기본',  bg: '#0A0E1A', bgFever: '#2A0A2E', needle: '#F5F7FA', good: '#39C5E8', perfect: '#FFC940', lv: 1, price: 0 },
+  sunset:  { name: '선셋',  bg: '#1A0E12', bgFever: '#3A0A1E', needle: '#FFF1E6', good: '#4DD9E8', perfect: '#FFB347', lv: 3, price: 80 },
+  mono:    { name: '모노',  bg: '#050505', bgFever: '#141414', needle: '#FFFFFF', good: '#8FE3FF', perfect: '#FFD400', lv: 5, price: 120 },
+  neon:    { name: '네온',  bg: '#05041A', bgFever: '#170838', needle: '#EAFBFF', good: '#28E5FF', perfect: '#FFE93A', lv: 8, price: 180 },
+};
+const TRAILS = {
+  classic: { name: '클래식',    color: '#FF6AD5', lv: 1, price: 0 },
+  jade:    { name: '제이드',    color: '#39FF9E', lv: 8, price: 100 },
+  prism:   { name: '프리즘',    color: '#FFD166', lv: 12, price: 150 },
 };
 
 const S = {
@@ -78,20 +90,88 @@ const S = {
   lblScore: '점수', lblBest: '최고 점수',
   lblBestStreak: '최고 연속 퍼펙트', lblLifetime: '누적 퍼펙트',
   newFlare: 'NEW!',
+
+  menuClassic: '클래식', menuDaily: '데일리 챌린지', menuZen: '젠 모드', menuCollection: '도감',
+  lockedLv: n => 'Lv.' + n + ' 해금',
+  zenTimeLeft: n => '젠 · ' + n + '초',
+  collectionTitle: '도감',
+  lvLabel: n => 'Lv.' + n,
+  coinsLabel: n => '코인 ' + n,
+  achLabel: (a, b) => '업적 ' + a + '/' + b,
+  themesLabel: '테마', trailsLabel: '트레일', settingsLabel: '설정',
+  settingsReduceMotion: '모션 줄이기', settingsColorblind: '고대비 색상',
+  onLabel: 'ON', offLabel: 'OFF',
+  priceLabel: n => n + '코인',
+  decoyTaunt: '미끼 아크에 속았다!',
+  decoyMissMsg: '미끼였어요!',
+  chainClear: '체인 완성!',
+  levelUp: n => 'Lv.' + n + ' 달성!',
+  resultReward: (xp, coins) => 'XP +' + xp + '   코인 +' + coins,
+  zenTimeUp: '시간 종료!',
+  zenResultBest: '젠 모드 최고',
+  dailyResultBest: '오늘의 최고',
+  dailyStreakLine: n => n + '일 연속 도전',
+  back: '뒤로',
+  achName: {
+    first_perfect: '첫 퍼펙트', streak_10: '퍼펙트 x10', streak_20: '퍼펙트 x20',
+    fever_first: '첫 피버', gold_first: '첫 골드', chain_clear: '체인 클리어',
+    decoy_fooled: '미끼에 낚임', lifetime_100: '누적 퍼펙트 100', lifetime_1000: '누적 퍼펙트 1000',
+    runs_50: '50판 플레이', near_miss_1ms: '1ms 아쉬움', daily_first_play: '데일리 첫 도전',
+    daily_streak_7: '데일리 7일 연속', zen_complete: '젠 모드 완주', level_5: '레벨 5 달성',
+    level_10: '레벨 10 달성', level_12: '레벨 12 달성', record_x5: '신기록 5회', coins_100_spent: '코인 100 사용',
+  },
 };
+const ACH_ORDER = ['first_perfect','streak_10','streak_20','fever_first','gold_first','chain_clear',
+  'decoy_fooled','lifetime_100','lifetime_1000','runs_50','near_miss_1ms','daily_first_play',
+  'daily_streak_7','zen_complete','level_5','level_10','level_12','record_x5'];
 
 /* ---------------- persistence ---------------- */
-const SAVE_KEY = 'chalna_save_v1';
-const save = { bestScore: 0, bestStreak: 0, lifetimePerfects: 0, totalRuns: 0 };
+const SAVE_KEY = 'chalna_save_v2';
+const save = {
+  bestScore: 0, bestStreak: 0, lifetimePerfects: 0, totalRuns: 0,
+  xp: 0, level: 1, coins: 0, coinsSpent: 0, recordBreaks: 0,
+  achievements: {},
+  unlockedThemes: ['classic'], unlockedTrails: ['classic'],
+  activeTheme: 'classic', activeTrail: 'classic',
+  dailyBestByDate: {}, dailyStreak: 0, lastDailyDate: '',
+  zenBest: 0,
+  ghost: [],
+  settings: { reduceMotion: false, colorblind: false },
+};
 function loadSave() {
   try {
-    const s = JSON.parse(localStorage.getItem(SAVE_KEY));
+    let s = JSON.parse(localStorage.getItem(SAVE_KEY));
+    if (!s) {
+      const legacy = JSON.parse(localStorage.getItem('chalna_save_v1'));
+      if (legacy && typeof legacy === 'object') {
+        s = { bestScore: legacy.bestScore, bestStreak: legacy.bestStreak, lifetimePerfects: legacy.lifetimePerfects, totalRuns: legacy.totalRuns };
+      }
+    }
     const num = v => (Number.isFinite(+v) && +v > 0) ? Math.floor(+v) : 0;
     if (s && typeof s === 'object') {
       save.bestScore = num(s.bestScore);
       save.bestStreak = num(s.bestStreak);
       save.lifetimePerfects = num(s.lifetimePerfects);
       save.totalRuns = num(s.totalRuns);
+      save.xp = num(s.xp);
+      save.level = Math.max(1, num(s.level) || 1);
+      save.coins = num(s.coins);
+      save.coinsSpent = num(s.coinsSpent);
+      save.recordBreaks = num(s.recordBreaks);
+      if (s.achievements && typeof s.achievements === 'object') save.achievements = s.achievements;
+      if (Array.isArray(s.unlockedThemes) && s.unlockedThemes.length) save.unlockedThemes = s.unlockedThemes;
+      if (Array.isArray(s.unlockedTrails) && s.unlockedTrails.length) save.unlockedTrails = s.unlockedTrails;
+      if (typeof s.activeTheme === 'string') save.activeTheme = s.activeTheme;
+      if (typeof s.activeTrail === 'string') save.activeTrail = s.activeTrail;
+      if (s.dailyBestByDate && typeof s.dailyBestByDate === 'object') save.dailyBestByDate = s.dailyBestByDate;
+      save.dailyStreak = num(s.dailyStreak);
+      if (typeof s.lastDailyDate === 'string') save.lastDailyDate = s.lastDailyDate;
+      save.zenBest = num(s.zenBest);
+      if (Array.isArray(s.ghost)) save.ghost = s.ghost;
+      if (s.settings && typeof s.settings === 'object') {
+        save.settings.reduceMotion = !!s.settings.reduceMotion;
+        save.settings.colorblind = !!s.settings.colorblind;
+      }
     }
   } catch (e) { /* private mode → session-only records */ }
 }
@@ -99,6 +179,8 @@ function writeSave() {
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {}
 }
 loadSave();
+let PAL = THEMES[save.activeTheme] || THEMES.classic;
+let TRAIL_COLOR = (TRAILS[save.activeTrail] || TRAILS.classic).color;
 
 /* ---------------- canvas ---------------- */
 const canvas = document.getElementById('c');
@@ -127,7 +209,6 @@ function resize() {
   canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
   canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
   CX = W / 2; CY = H / 2;
-  // spec radius, clamped so the HUD above the dial always has room
   R = Math.max(80, Math.min(0.36 * Math.min(W, H), H / 2 - 150));
   const probe = document.getElementById('safe-probe');
   if (probe) {
@@ -160,7 +241,6 @@ function initAudio() {
     comp.connect(master);
     bus = AC.createGain();
     bus.connect(comp);
-    // fever echo: bus -> delay (fb 0.3) -> wet gain (0 normally) -> comp
     const delay = AC.createDelay(0.5);
     delay.delayTime.value = 0.16;
     const fb = AC.createGain(); fb.gain.value = 0.3;
@@ -210,11 +290,11 @@ function noise(dur, vol, filterType, f0, f1) {
   src.start(t0); src.stop(t0 + dur + 0.05);
 }
 const sPerfect = (streak, gold) => {
-  const semis = Math.min(streak, 24);                 // C5 + 1 semitone/streak, cap C7
+  const semis = Math.min(streak, 24);
   const f = 523.25 * Math.pow(2, semis / 12);
   tone('sine', f, 0, 0.008, 0.2, 0.26);
   tone('triangle', f, 0, 0.008, 0.2, 0.12);
-  if (streak > 0 && streak % 5 === 0) tone('sine', f * 1.5, 0, 0.008, 0.2, 0.26 * 0.158); // −16dB fifth
+  if (streak > 0 && streak % 5 === 0) tone('sine', f * 1.5, 0, 0.008, 0.2, 0.26 * 0.158);
   noise(0.03, 0.15, 'highpass', 3000, 0);
   if (gold) { tone('sine', f * 2, 0, 0.008, 0.25, 0.12); tone('sine', 1320, 0, 0.005, 0.3, 0.08); }
 };
@@ -224,13 +304,52 @@ const sMiss = () => {
   tone('sawtooth', 406, 82, 0.005, 0.5, 0.12);
   noise(0.3, 0.15, 'lowpass', 200, 0);
 };
-const sClick = () => noise(0.02, 0.079, 'bandpass', 4000, 0);   // −22dB tension tick
+const sClick = () => noise(0.02, 0.079, 'bandpass', 4000, 0);
 const sFever = () => { tone('sine', 160, 60, 0.01, 0.4, 0.35); noise(0.3, 0.12, 'bandpass', 400, 4000); };
 const sMilestone = () => { tone('square', 110, 0, 0.01, 0.3, 0.14); tone('square', 165, 0, 0.01, 0.3, 0.10); };
 const sBlip = i => tone('sine', 600 + i * 28, 0, 0.004, 0.045, 0.07);
 const sShimmer = () => { tone('sine', 1567, 0, 0.01, 0.3, 0.09); tone('sine', 1568, 0, 0.01, 0.3, 0.09); tone('sine', 2093, 0, 0.01, 0.25, 0.06); };
 const sHeartbeat = () => { tone('sine', 55, 0, 0.01, 0.09, 0.16); setTimeout(() => tone('sine', 55, 0, 0.01, 0.09, 0.12), 100); };
+const sWobble = () => { tone('sine', 300, 0, 0.02, 0.5, 0.05); tone('sine', 306, 0, 0.02, 0.5, 0.05); };
+const sShrink = () => tone('triangle', 900, 1400, 0.01, 0.35, 0.08);
+const sDecoyGotcha = () => { tone('square', 500, 200, 0.005, 0.15, 0.16); tone('square', 260, 120, 0.005, 0.2, 0.12); noise(0.1, 0.1, 'bandpass', 1200, 400); };
+const sChainLink = i => tone('sine', 880 + i * 110, 0, 0.005, 0.12, 0.14);
+const sChainComplete = () => {
+  tone('sine', 660, 0, 0.006, 0.18, 0.2);
+  setTimeout(() => tone('sine', 880, 0, 0.006, 0.18, 0.2), 90);
+  setTimeout(() => tone('sine', 1320, 0, 0.006, 0.35, 0.22), 180);
+  tone('sine', 1980, 0, 0.01, 0.4, 0.08);
+};
+const sLevelUp = () => {
+  tone('triangle', 392, 0, 0.008, 0.15, 0.16);
+  setTimeout(() => tone('triangle', 523.25, 0, 0.008, 0.2, 0.18), 100);
+  setTimeout(() => tone('triangle', 659.25, 0, 0.01, 0.3, 0.2), 200);
+};
+const sAchievement = () => { tone('sine', 784, 0, 0.005, 0.12, 0.12); setTimeout(() => tone('sine', 988, 0, 0.005, 0.16, 0.12), 70); };
+const sZenSoft = () => { tone('sine', 220, 140, 0.008, 0.2, 0.14); noise(0.08, 0.05, 'lowpass', 300, 0); };
 const buzz = ms => { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {} };
+
+/* ---------------- seeded RNG (daily challenge determinism) ---------------- */
+function hashStr(s) {
+  let h = 1779033703 ^ s.length;
+  for (let i = 0; i < s.length; i++) { h = Math.imul(h ^ s.charCodeAt(i), 3432918353); h = (h << 13) | (h >>> 19); }
+  return (h ^ (h >>> 16)) >>> 0;
+}
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function kstDateStr() {
+  const d = new Date(Date.now() + 9 * 3600 * 1000);
+  return d.toISOString().slice(0, 10);
+}
+let RNG = Math.random;
+const randR = (a, b) => a + RNG() * (b - a);
 
 /* ---------------- effects entities ---------------- */
 const POOL_N = 300;
@@ -248,13 +367,14 @@ function spawnP(x, y, vx, vy, life, size, color, kind) {
   }
 }
 function burst(x, y, n, color, speed, kind) {
+  if (save.settings.reduceMotion) n = Math.ceil(n * 0.35);
   for (let i = 0; i < n; i++) {
     const a = rand(0, TAU), v = rand(speed * 0.35, speed);
     spawnP(x, y, Math.cos(a) * v, Math.sin(a) * v, rand(0.4, kind === 1 ? 1.2 : 0.6), rand(2, kind === 1 ? 6 : 4), color, kind);
   }
 }
 let pops = [];      // floating text  {text,x,y,life,max,size,color,vy,punch}
-let banners = [];   // sliding banner {text,color,t,dur,size}
+let banners = [];   // sliding banner {text,color,t,dur,size,slot}
 let stamps = [];    // center stamp   {text,color,t,dur,size}
 let waves = [];     // shockwave ring {t}
 let frags = [];     // arc fragments  {a0,span,r,vr,va,t}
@@ -262,18 +382,122 @@ let flashes = [];   // arc edge flash {ang,t}
 function popup(text, x, y, size, color, punch) {
   pops.push({ text, x, y, life: 0.8, max: 0.8, size, color, vy: -66, punch: punch || 0 });
 }
+function pushBanner(text, color, dur, size) {
+  const slot = Math.min(banners.length, 2);
+  banners.push({ text, color, t: 0, dur: dur || 1.1, size: size || 30, slot });
+}
+
+/* ---------------- achievements ---------------- */
+// achievement toasts are a strict one-at-a-time FIFO queue (never stack with each
+// other or with milestone/record banners) so a burst of unlocks never collides with the HUD.
+let achToastQueue = [], achToast = null;
+function unlock(id) {
+  if (save.achievements[id]) return;
+  save.achievements[id] = true;
+  achToastQueue.push('업적 달성: ' + (S.achName[id] || id));
+  sAchievement();
+  writeSave();
+}
+function updateAchToast(dt) {
+  if (achToast) {
+    achToast.t += dt;
+    if (achToast.t >= achToast.dur) achToast = null;
+  }
+  if (!achToast && achToastQueue.length) achToast = { text: achToastQueue.shift(), t: 0, dur: 1.9 };
+}
+
+/* ---------------- cosmetics ---------------- */
+function isThemeUnlocked(id) { return THEMES[id] && (save.level >= THEMES[id].lv || save.unlockedThemes.indexOf(id) >= 0); }
+function isTrailUnlocked(id) { return TRAILS[id] && (save.level >= TRAILS[id].lv || save.unlockedTrails.indexOf(id) >= 0); }
+function applyTheme(id) { if (!THEMES[id]) return; save.activeTheme = id; PAL = THEMES[id]; }
+function applyTrail(id) { if (!TRAILS[id]) return; save.activeTrail = id; TRAIL_COLOR = TRAILS[id].color; }
+function tryEquipOrBuyTheme(id) {
+  if (!THEMES[id]) return;
+  if (isThemeUnlocked(id)) {
+    if (save.unlockedThemes.indexOf(id) < 0) save.unlockedThemes.push(id);
+    applyTheme(id); writeSave(); sBlip(2); return;
+  }
+  const price = THEMES[id].price;
+  if (save.coins >= price) {
+    save.coins -= price; save.coinsSpent += price;
+    save.unlockedThemes.push(id); applyTheme(id); writeSave(); sMilestone();
+    if (save.coinsSpent >= 100) unlock('coins_100_spent');
+  } else sClick();
+}
+function tryEquipOrBuyTrail(id) {
+  if (!TRAILS[id]) return;
+  if (isTrailUnlocked(id)) {
+    if (save.unlockedTrails.indexOf(id) < 0) save.unlockedTrails.push(id);
+    applyTrail(id); writeSave(); sBlip(2); return;
+  }
+  const price = TRAILS[id].price;
+  if (save.coins >= price) {
+    save.coins -= price; save.coinsSpent += price;
+    save.unlockedTrails.push(id); applyTrail(id); writeSave(); sMilestone();
+    if (save.coinsSpent >= 100) unlock('coins_100_spent');
+  } else sClick();
+}
+function toggleSetting(id) {
+  if (id !== 'reduceMotion' && id !== 'colorblind') return;
+  save.settings[id] = !save.settings[id];
+  writeSave(); sBlip(1);
+}
+
+/* ---------------- progression ---------------- */
+function xpToNext(level) { return 80 + 40 * level; }
+let pendingLevelUps = [];
+function onLevelUp(newLevel) {
+  pushBanner(S.levelUp(newLevel), PAL.perfect, 1.6, 30);
+  sLevelUp();
+  pendingLevelUps.push(newLevel);
+  if (newLevel === 5) unlock('level_5');
+  if (newLevel === 10) unlock('level_10');
+  if (newLevel === 12) unlock('level_12');
+}
+function grantXP(amount) {
+  if (amount <= 0) return;
+  save.xp += amount;
+  while (save.xp >= xpToNext(save.level)) {
+    save.xp -= xpToNext(save.level);
+    save.level++;
+    onLevelUp(save.level);
+  }
+}
+function isWobbleUnlocked() { return save.level >= 3; }
+function isShrinkUnlocked() { return save.level >= 5; }
+function isDecoyUnlocked() { return save.level >= 8; }
+function isChainUnlocked() { return save.level >= 12; }
+function isDailyUnlocked() { return save.level >= 2; }
+function isCollectionUnlocked() { return save.level >= 2; }
+
+/* ---------------- daily streak ---------------- */
+function updateDailyStreak(today) {
+  if (save.lastDailyDate === today) return;
+  if (save.lastDailyDate) {
+    const prev = new Date(save.lastDailyDate + 'T00:00:00Z');
+    const cur = new Date(today + 'T00:00:00Z');
+    const diffDays = Math.round((cur - prev) / 86400000);
+    save.dailyStreak = diffDays === 1 ? save.dailyStreak + 1 : 1;
+  } else {
+    save.dailyStreak = 1;
+  }
+  save.lastDailyDate = today;
+  if (save.dailyStreak >= 7) unlock('daily_streak_7');
+}
 
 /* ---------------- game state ---------------- */
-const ST_TITLE = 0, ST_PLAY = 1, ST_DYING = 2, ST_OVER = 3;
-let state = ST_TITLE;
+const ST_MENU = 0, ST_PLAY = 1, ST_DYING = 2, ST_OVER = 3, ST_COLLECTION = 4;
+let state = ST_MENU;
 let paused = false;
+let mode = 'classic'; // classic | daily | zen
 
 let needle = 0, dir = 1;
-let arc = null;               // {center, w, p, gold, dist0}
+let arc = null;               // {center, w, p, gold, mod, dist0, center0, wFreq, wPhase}
+let decoy = null;             // {center, w} | null
 let lastGold = false;
-let travelSinceSpawn = 0;
+let travelSinceSpawn = 0, arcAge = 0;
 let hits = 0, score = 0, streak = 0;
-let runMaxStreak = 0, runPerfects = 0;
+let runMaxStreak = 0, runPerfects = 0, runChainClears = 0;
 let startBest = 0, startBestStreak = 0;
 let recordBroken = false, scoreGold = false;
 let fever = false, feverT = 0, feverMix = 0;
@@ -284,9 +508,14 @@ let grace = 0, speedEase = 1;
 let streakPunchT = 0, streakDeflateT = 0;
 let inputLockUntil = 0;
 let trail = [];
+let chainLinksLeft = 0, chainPerfects = 0, chainTotal = 0;
+let zenTimeLeft = 60;
+let runElapsed = 0;
+let liveGhost = [], ghostRecordAcc = 0, ghostPlaybackIdx = 0;
+let lastRunXP = 0, lastRunCoins = 0;
 
 // dying / gameover
-let dieT = 0, ghostAngle = 0, missSecs = 0, missLate = false, missArcGold = false, missEdgeMs = 0;
+let dieT = 0, ghostAngle = 0, missSecs = 0, missLate = false, missArcGold = false, missEdgeMs = 0, deathReason = 'edge';
 let panelT = 0, countT = 0, countDone = false, shownScore = 0, lastBlip = -1;
 let tauntText = '', newBest = false, newBestStreak = false, confettiFired = false;
 
@@ -294,24 +523,87 @@ let lastNow = performance.now();
 let timeScale = 1;
 
 const mult = st => st >= 15 ? 5 : st >= 10 ? 4 : st >= 6 ? 3 : st >= 3 ? 2 : 1;
-const omega = n => Math.min(200 + 7 * Math.max(0, n - 3), 460);            // °/s
+const omega = n => Math.min(200 + 7 * Math.max(0, n - 3), 460);
 const goodW = n => Math.max(42 - 0.5 * Math.max(0, n - 3), omega(n) * 0.070);
 const perfW = n => Math.max(goodW(n) * 0.28, omega(n) * 0.030);
-const effPerfW = () => arc.p * (fever ? 1.2 : 1);
-
-function spawnArc() {
-  const n = hits;
-  let gold = false;
-  if (n >= 10 && !lastGold && Math.random() < 1 / 8) gold = true;
-  lastGold = gold;
-  const dist0 = rand(100, 260);
-  arc = { center: norm360(needle + dir * dist0), w: goodW(n), p: perfW(n), gold, dist0 };
-  travelSinceSpawn = 0;
+function effPerfW() {
+  const base = arc.p * (fever ? 1.2 : 1);
+  if (arc.mod === 'shrink') {
+    const frac = clamp(travelSinceSpawn / Math.max(1, arc.dist0), 0, 1);
+    return lerp(arc.p * 1.35, arc.p * 0.65, frac) * (fever ? 1.2 : 1);
+  }
+  return base;
+}
+function arcCenterNow() {
+  if (!arc) return 0;
+  if (arc.mod === 'wobble') return norm360(arc.center0 + 5 * Math.sin(TAU * arc.wFreq * arcAge + arc.wPhase));
+  return arc.center;
 }
 
-function startRun() {
+function pickTaunt(missEdge) {
+  if (hits % 10 === 9) return '한 타만 더 하면 ' + (hits + 1) + '타였는데...';
+  if (streak >= 6 && streak < 8) return '피버 직전이었는데!';
+  if (missEdge <= 20) return '한 끗 차이... 겨우 ' + Math.max(1, Math.round(missEdge)) + 'ms!';
+  if (missArcGold) return '골드 욕심이 과했나?';
+  if (startBest > 0 && score < startBest && score >= 0.9 * startBest)
+    return '최고 기록까지 단 ' + (startBest - score) + '점!';
+  if (streak >= 10) return '연속 퍼펙트 ' + streak + '에서... 아깝다!';
+  if (hits < 5) return '워밍업은 끝났죠?';
+  return '다시 하면 넘길 수 있어요';
+}
+
+function spawnChainLink() {
+  const n = hits;
+  const dist0 = randR(40, 70);
+  arc = { center: norm360(needle + dir * dist0), w: goodW(n) * 0.6, p: perfW(n), gold: false, mod: 'chain', dist0, center0: 0, wFreq: 0, wPhase: 0 };
+  decoy = null;
+  travelSinceSpawn = 0; arcAge = 0;
+}
+
+function spawnArc() {
+  decoy = null;
+  const n = hits;
+
+  if (chainLinksLeft === 0 && n >= 15 && isChainUnlocked() && RNG() < 0.10) {
+    chainLinksLeft = 3; chainPerfects = 0; chainTotal = 0;
+    spawnChainLink();
+    return;
+  }
+
+  let mod = null, gold = false;
+  if (n >= 10 && !lastGold && RNG() < 1 / 8) gold = true;
+  else if (n >= 6 && isWobbleUnlocked() && RNG() < 0.20) mod = 'wobble';
+  else if (n >= 6 && isShrinkUnlocked() && RNG() < 0.20) mod = 'shrink';
+  else if (n >= 10 && isDecoyUnlocked() && RNG() < 0.25) mod = 'decoy';
+  lastGold = gold;
+
+  const dist0 = randR(100, 260);
+  const center = norm360(needle + dir * dist0);
+  arc = {
+    center, w: goodW(n), p: perfW(n), gold, mod, dist0,
+    center0: center, wFreq: 1.1 + 0.02 * Math.min(n, 40), wPhase: RNG() * TAU,
+  };
+  travelSinceSpawn = 0; arcAge = 0;
+
+  if (mod === 'wobble') sWobble();
+  if (mod === 'shrink') sShrink();
+
+  if (mod === 'decoy') {
+    const dWidth = goodW(n) * 0.75;
+    let dCenter = 0, ok = false;
+    for (let tries = 0; tries < 5; tries++) {
+      dCenter = norm360(needle + dir * randR(35, 70));
+      if (Math.abs(signedDelta(dCenter, center)) >= (dWidth + arc.w) / 2 + 12) { ok = true; break; }
+    }
+    if (ok) decoy = { center: dCenter, w: dWidth };
+    else arc.mod = null;
+  }
+}
+
+function startRun(m) {
+  mode = m || 'classic';
   state = ST_PLAY;
-  score = 0; hits = 0; streak = 0; runMaxStreak = 0; runPerfects = 0;
+  score = 0; hits = 0; streak = 0; runMaxStreak = 0; runPerfects = 0; runChainClears = 0;
   startBest = save.bestScore; startBestStreak = save.bestStreak;
   recordBroken = false; scoreGold = false;
   fever = false; feverT = 0; feverMix = 0;
@@ -319,9 +611,17 @@ function startRun() {
   nearMsgCd = 0; hbTimer = 0; hbOn = false;
   grace = 0; speedEase = 1; lastGold = false;
   streakPunchT = 0; streakDeflateT = 0;
-  dir = Math.random() < 0.5 ? 1 : -1;
-  trail = []; pops = []; banners = []; stamps = []; waves = []; frags = []; flashes = [];
+  chainLinksLeft = 0; chainPerfects = 0; chainTotal = 0;
+  zenTimeLeft = 60; runElapsed = 0;
+  liveGhost = []; ghostRecordAcc = 0; ghostPlaybackIdx = 0;
+  pendingLevelUps = [];
+  trail = []; pops = []; banners = []; stamps = []; waves = []; flashes = []; frags = [];
   for (let i = 0; i < POOL_N; i++) pool[i].on = false;
+
+  RNG = mode === 'daily' ? mulberry32(hashStr('chalna-' + kstDateStr())) : Math.random;
+  dir = RNG() < 0.5 ? 1 : -1;
+  if (mode === 'daily') unlock('daily_first_play');
+
   spawnArc();
 }
 
@@ -330,16 +630,18 @@ const tipX = a => CX + Math.cos(rad(a)) * R;
 const tipY = a => CY + Math.sin(rad(a)) * R;
 
 function checkRecord() {
+  if (mode !== 'classic') return;
   if (!recordBroken && startBest > 0 && score > startBest) {
     recordBroken = true; scoreGold = true;
-    save.bestScore = score; writeSave();
-    banners.push({ text: S.newRecord, color: COL.gold, t: 0, dur: 1.6, size: 34 });
+    save.bestScore = score; save.recordBreaks++; writeSave();
+    pushBanner(S.newRecord, PAL.perfect, 1.6, 34);
     sShimmer();
-    for (let i = 0; i < 40; i++) burst(CX, CY - R - 20, 1, COL.gold, 260, 1);
+    if (save.recordBreaks >= 5) unlock('record_x5');
+    for (let i = 0; i < 40; i++) burst(CX, CY - R - 20, 1, PAL.perfect, 260, 1);
   } else if (recordBroken && score > save.bestScore) {
     save.bestScore = score; writeSave();
   } else if (startBest === 0 && score > save.bestScore) {
-    save.bestScore = score; writeSave();   // first run: silent live update, no banner
+    save.bestScore = score; writeSave();
   }
 }
 
@@ -347,48 +649,79 @@ function startFever() {
   fever = true; feverT = 6;
   if (delayWet && AC) delayWet.gain.setTargetAtTime(0.35, AC.currentTime, 0.05);
   sFever();
-  stamps.push({ text: S.fever, color: '#FF6AD5', t: 0, dur: 1.0, size: 64 });
+  unlock('fever_first');
+  stamps.push({ text: S.fever, color: COL.fever, t: 0, dur: 1.0, size: 64 });
 }
 function endFever() {
   fever = false;
   if (delayWet && AC) delayWet.gain.setTargetAtTime(0, AC.currentTime, 0.1);
 }
 
-function afterHit() {
+function bookkeepHit() {
   hits++;
   if (hits % 10 === 0) {
     score += 50;
-    banners.push({ text: S.milestone(hits), color: COL.white, t: 0, dur: 1.1, size: 30 });
+    pushBanner(S.milestone(hits), COL.white, 1.1, 30);
     popup(S.plus(50), CX, CY - R * 0.45, 22, COL.white, 0);
     sMilestone();
   }
   checkRecord();
-  dir = -dir;
-  spawnArc();
+}
+
+function chainFinisherBonus() {
+  const bonus = 150 * mult(streak);
+  score += bonus;
+  popup(S.chainClear, CX, CY - R * 0.32, 30, PAL.perfect, 1);
+  popup(S.plus(bonus), CX, CY, 28, PAL.perfect, 1);
+  sChainComplete();
+  unlock('chain_clear');
+  runChainClears++;
+  burst(CX, CY, 60, PAL.perfect, 420, 0);
+  waves.push({ t: 0 });
 }
 
 function doPerfect(absD) {
   const gold = arc.gold;
+  const isChain = arc.mod === 'chain';
   const pts = 25 * mult(streak) * (fever ? 2 : 1) * (gold ? 3 : 1);
   score += pts;
   streak++;
   streakPunchT = 0.15;
   runMaxStreak = Math.max(runMaxStreak, streak);
   runPerfects++; save.lifetimePerfects++;
-  // juice
-  hitStop = 0.04; shakeT = 0.12; shakeMag = 12;
+  if (save.lifetimePerfects === 1) unlock('first_perfect');
+  if (save.lifetimePerfects === 100) unlock('lifetime_100');
+  if (save.lifetimePerfects === 1000) unlock('lifetime_1000');
+  if (streak === 10) unlock('streak_10');
+  if (streak === 20) unlock('streak_20');
+  if (gold) unlock('gold_first');
+
+  const notReduced = !save.settings.reduceMotion;
+  if (notReduced) { hitStop = 0.04; shakeT = 0.12; shakeMag = 12; }
+  const cNow = arcCenterNow();
   const tx = tipX(needle), ty = tipY(needle);
-  burst(tx, ty, 24, COL.gold, 340, 0);
+  burst(tx, ty, 24, PAL.perfect, 340, 0);
   waves.push({ t: 0 });
-  for (let i = 0; i < 3; i++)
-    frags.push({ a0: arc.center - arc.w / 2 + (i * arc.w) / 3, span: arc.w / 3, r: R, vr: rand(40, 120), va: rand(-90, 90), t: 0 });
-  popup(S.plus(pts), tx, ty - 26, 26, gold ? COL.gold : COL.white, 1);
-  popup(S.perfect, CX, CY - R * 0.15, 32, COL.gold, 1);
-  if (gold) popup(S.goldHit, CX, CY - R * 0.30, 30, COL.gold, 1);
+  if (notReduced) for (let i = 0; i < 3; i++)
+    frags.push({ a0: cNow - arc.w / 2 + (i * arc.w) / 3, span: arc.w / 3, r: R, vr: rand(40, 120), va: rand(-90, 90), t: 0 });
+  popup(S.plus(pts), tx, ty - 26, 26, gold ? PAL.perfect : COL.white, 1);
+  popup(S.perfect, CX, CY - R * 0.15, 32, PAL.perfect, 1);
+  if (gold) popup(S.goldHit, CX, CY - R * 0.30, 30, PAL.perfect, 1);
   sPerfect(streak, gold);
   buzz(10);
   if (streak % 8 === 0) startFever();
-  afterHit();
+  bookkeepHit();
+
+  if (isChain) {
+    chainPerfects++; chainTotal++;
+    sChainLink(chainTotal);
+    chainLinksLeft--;
+    if (chainLinksLeft > 0) { spawnChainLink(); return; }
+    if (chainPerfects === 3) chainFinisherBonus();
+    dir = -dir; spawnArc();
+    return;
+  }
+  dir = -dir; spawnArc();
 }
 
 function doGood(absD) {
@@ -408,49 +741,155 @@ function doGood(absD) {
   pops.push({ text: S.foregone(perfectWouldPay), x: tx, y: ty + 6, life: 0.8, max: 0.8, size: 15, color: COL.gray, vy: -30, punch: 0 });
   if (msToPerf <= 15 && nearMsgCd <= 0) {
     popup(S.nearPerfect(Math.max(1, Math.round(msToPerf))), CX, CY - R * 0.55, 24, '#FFE9AF', 1);
+    if (msToPerf <= 1) unlock('near_miss_1ms');
     nearMsgCd = 3;
   }
   sGood();
-  afterHit();
+  bookkeepHit();
+
+  if (arc.mod === 'chain') chainLinksLeft = 0;
+  dir = -dir; spawnArc();
 }
 
-function pickTaunt(missEdge) {
-  if (hits % 10 === 9) return '한 타만 더 하면 ' + (hits + 1) + '타였는데...';
-  if (streak >= 6 && streak < 8) return '피버 직전이었는데!';
-  if (missEdge <= 20) return '한 끗 차이... 겨우 ' + Math.max(1, Math.round(missEdge)) + 'ms!';
-  if (missArcGold) return '골드 욕심이 과했나?';
-  if (startBest > 0 && score < startBest && score >= 0.9 * startBest)
-    return '최고 기록까지 단 ' + (startBest - score) + '점!';
-  if (streak >= 10) return '연속 퍼펙트 ' + streak + '에서... 아깝다!';
-  if (hits < 5) return '워밍업은 끝났죠?';
-  return '다시 하면 넘길 수 있어요';
+function doZenMiss(signedOffset) {
+  streak = 0;
+  const tx = tipX(needle), ty = tipY(needle);
+  popup('아쉬워요', tx, ty - 30, 18, COL.miss, 0);
+  sZenSoft(); buzz(8);
+  bookkeepHit();
+  if (arc.mod === 'chain') chainLinksLeft = 0;
+  dir = -dir; spawnArc();
 }
 
-function doMiss(signedOffset) {
-  const w = omega(hits) * Math.max(speedEase, 0.01);
-  missSecs = Math.abs(signedOffset) / w;
-  missLate = signedOffset > 0;
-  missArcGold = arc.gold;
-  missEdgeMs = (Math.abs(signedOffset) - arc.w / 2) / w * 1000;
-  ghostAngle = needle;
-  if (Math.abs(signedOffset) <= 1.5 * arc.w)
-    flashes.push({ ang: arc.center + dir * Math.sign(signedOffset || 1) * arc.w / 2, t: 0 });
-  endFever();
-  sMiss(); buzz(20);
-  // finalize records at death
-  newBest = score > startBest;
-  newBestStreak = runMaxStreak > startBestStreak;
-  save.bestScore = Math.max(save.bestScore, score);
-  save.bestStreak = Math.max(save.bestStreak, runMaxStreak);
+function finalizeRunRewards() {
   save.totalRuns++;
+  const xpGain = Math.floor(score / 8) + runPerfects * 3 + runChainClears * 10;
+  const factor = mode === 'zen' ? 0.4 : 1;
+  lastRunXP = Math.floor(xpGain * factor);
+  lastRunCoins = Math.floor(hits / 5);
+  save.coins += lastRunCoins;
+  grantXP(lastRunXP);
+  if (mode === 'daily') {
+    const today = kstDateStr();
+    const prev = save.dailyBestByDate[today] || 0;
+    if (score > prev) save.dailyBestByDate[today] = score;
+    updateDailyStreak(today);
+  }
+  if (mode === 'zen') save.zenBest = Math.max(save.zenBest, score);
+  if (save.totalRuns === 50) unlock('runs_50');
   writeSave();
-  tauntText = pickTaunt(missEdgeMs);
+}
+
+function doMiss(signedOffset, reason) {
+  reason = reason || 'edge';
+  deathReason = reason;
+  if (reason === 'edge') {
+    const w = omega(hits) * Math.max(speedEase, 0.01);
+    missSecs = Math.abs(signedOffset) / w;
+    missLate = signedOffset > 0;
+    missEdgeMs = (Math.abs(signedOffset) - arc.w / 2) / w * 1000;
+    if (Math.abs(signedOffset) <= 1.5 * arc.w)
+      flashes.push({ ang: arc.center + dir * Math.sign(signedOffset || 1) * arc.w / 2, t: 0 });
+    tauntText = pickTaunt(missEdgeMs);
+  } else {
+    missSecs = 0; missLate = true; missEdgeMs = 999;
+    flashes.push({ ang: decoy ? decoy.center : needle, t: 0 });
+    tauntText = S.decoyTaunt;
+  }
+  missArcGold = arc.gold;
+  ghostAngle = needle;
+  endFever();
+  if (reason === 'decoy') { sDecoyGotcha(); unlock('decoy_fooled'); } else { sMiss(); }
+  buzz(20);
+  newBest = mode === 'classic' && score > startBest;
+  newBestStreak = mode === 'classic' && runMaxStreak > startBestStreak;
+  if (mode === 'classic') {
+    save.bestScore = Math.max(save.bestScore, score);
+    save.bestStreak = Math.max(save.bestStreak, runMaxStreak);
+    if (newBest) save.ghost = liveGhost.slice();
+  }
+  finalizeRunRewards();
   state = ST_DYING; dieT = 0;
+}
+
+function doZenTimeUp() {
+  newBest = false; newBestStreak = false;
+  finalizeRunRewards();
+  unlock('zen_complete');
+  tauntText = S.zenTimeUp;
+  state = ST_OVER; panelT = 0; countT = 0; countDone = false;
+  shownScore = 0; lastBlip = -1; confettiFired = false;
+}
+
+function ghostAngleAt(t) {
+  const gh = save.ghost;
+  if (!gh || gh.length < 2) return null;
+  while (ghostPlaybackIdx < gh.length - 2 && gh[ghostPlaybackIdx + 1].t < t) ghostPlaybackIdx++;
+  const a = gh[ghostPlaybackIdx], b = gh[Math.min(ghostPlaybackIdx + 1, gh.length - 1)];
+  if (t > b.t) return null;
+  const span = b.t - a.t;
+  const f = span > 0 ? clamp((t - a.t) / span, 0, 1) : 0;
+  const d = signedDelta(b.a, a.a);
+  return norm360(a.a + d * f);
 }
 
 /* ---------------- input ---------------- */
 const muteRect = () => ({ x: W - 48 - safeRight, y: 12 + safeTop, w: 36, h: 36 });
 function inMute(x, y) { const r = muteRect(); return x >= r.x - 6 && x <= r.x + r.w + 6 && y >= r.y - 6 && y <= r.y + r.h + 6; }
+const backBtnRect = () => ({ x: 12, y: 12 + safeTop, w: 36, h: 36 });
+function inBackBtn(x, y) { const r = backBtnRect(); return x >= r.x - 6 && x <= r.x + r.w + 6 && y >= r.y - 6 && y <= r.y + r.h + 6; }
+
+function getMenuCardRects() {
+  const cardW = Math.min(340, W - 48), cardH = 50, gap = 10;
+  const total = 4 * cardH + 3 * gap;
+  const startY = Math.max(CY + R * 0.35, H - total - 96);
+  const x = CX - cardW / 2;
+  return [
+    { id: 'classic', label: S.menuClassic, x, y: startY, w: cardW, h: cardH, locked: false, lv: 1 },
+    { id: 'daily', label: S.menuDaily, x, y: startY + (cardH + gap), w: cardW, h: cardH, locked: !isDailyUnlocked(), lv: 2 },
+    { id: 'zen', label: S.menuZen, x, y: startY + 2 * (cardH + gap), w: cardW, h: cardH, locked: false, lv: 1 },
+    { id: 'collection', label: S.menuCollection, x, y: startY + 3 * (cardH + gap), w: cardW, h: cardH, locked: !isCollectionUnlocked(), lv: 2 },
+  ];
+}
+
+function layoutCollection() {
+  const top = 64 + safeTop;
+  let y = top;
+  const L = {};
+  L.headerY = y; y += 36;
+  L.levelBarY = y; y += 34;
+  L.coinsY = y; y += 30;
+  L.achLabelY = y; y += 20;
+  const cols = 6, rows = 3, dot = 8, dgap = 15;
+  const gw = cols * dot * 2 + (cols - 1) * dgap;
+  const ax0 = CX - gw / 2;
+  L.achDots = [];
+  for (let i = 0; i < ACH_ORDER.length && i < cols * rows; i++) {
+    const c = i % cols, r = (i / cols) | 0;
+    L.achDots.push({ id: ACH_ORDER[i], x: ax0 + c * (dot * 2 + dgap) + dot, y: y + r * (dot * 2 + dgap) + dot, r: dot });
+  }
+  y += rows * (dot * 2 + dgap) + 14;
+  L.themesLabelY = y; y += 20;
+  const themeIds = Object.keys(THEMES), tsize = 50, tgap = 14;
+  const tw = themeIds.length * tsize + (themeIds.length - 1) * tgap;
+  const tx0 = CX - tw / 2;
+  L.themes = themeIds.map((id, i) => ({ id, x: tx0 + i * (tsize + tgap), y, w: tsize, h: tsize }));
+  y += tsize + 30;
+  L.trailsLabelY = y; y += 20;
+  const trailIds = Object.keys(TRAILS), rsize = 50, rgap = 14;
+  const rw = trailIds.length * rsize + (trailIds.length - 1) * rgap;
+  const rx0 = CX - rw / 2;
+  L.trails = trailIds.map((id, i) => ({ id, x: rx0 + i * (rsize + rgap), y, w: rsize, h: rsize }));
+  y += rsize + 26;
+  const sw = Math.min(300, W - 48), sh = 38, sgap = 10;
+  L.settings = [
+    { id: 'reduceMotion', label: S.settingsReduceMotion, x: CX - sw / 2, y, w: sw, h: sh },
+    { id: 'colorblind', label: S.settingsColorblind, x: CX - sw / 2, y: y + sh + sgap, w: sw, h: sh },
+  ];
+  y += 2 * sh + sgap + 20;
+  L.bottom = y;
+  return L;
+}
 
 function judge() {
   const t = performance.now();
@@ -459,30 +898,71 @@ function judge() {
   needle = norm360(needle + advance);
   travelSinceSpawn += Math.abs(advance);
   lastNow = t;
+
+  const center = arcCenterNow();
   const P = effPerfW();
-  const dRaw = signedDelta(needle, arc.center);
+  const dRaw = signedDelta(needle, center);
   const absD = Math.abs(dRaw);
-  if (absD <= P / 2) doPerfect(absD);
-  else if (absD <= arc.w / 2) doGood(absD);
-  else doMiss(travelSinceSpawn - arc.dist0);
+
+  if (absD <= P / 2) { doPerfect(absD); return; }
+  if (absD <= arc.w / 2) { doGood(absD); return; }
+
+  if (decoy) {
+    const dd = Math.abs(signedDelta(needle, decoy.center));
+    if (dd <= decoy.w / 2) {
+      if (mode === 'zen') doZenMiss(travelSinceSpawn - arc.dist0);
+      else doMiss(travelSinceSpawn - arc.dist0, 'decoy');
+      return;
+    }
+  }
+
+  const signedOffset = travelSinceSpawn - arc.dist0;
+  if (mode === 'zen') doZenMiss(signedOffset);
+  else doMiss(signedOffset, 'edge');
 }
 
 function onInput(x, y, fromPointer) {
   initAudio(); resumeAudio();
   if (fromPointer && inMute(x, y)) { setMuted(!muted); return; }
+  if (fromPointer && state !== ST_MENU && inBackBtn(x, y)) {
+    chainLinksLeft = 0;
+    endFever();
+    hbOn = false;
+    state = ST_MENU;
+    return;
+  }
   if (paused || grace > 0) return;
   const now = performance.now();
   if (now < inputLockUntil) return;
-  if (state === ST_TITLE) { startRun(); inputLockUntil = now + 50; return; }
+
+  if (state === ST_MENU) {
+    if (!fromPointer) { startRun('classic'); return; }
+    const cards = getMenuCardRects();
+    for (const c of cards) {
+      if (x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h) {
+        if (c.locked) { sClick(); return; }
+        if (c.id === 'collection') { state = ST_COLLECTION; return; }
+        startRun(c.id); inputLockUntil = now + 50; return;
+      }
+    }
+    return;
+  }
+  if (state === ST_COLLECTION) {
+    const L = layoutCollection();
+    for (const r of L.themes) if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) { tryEquipOrBuyTheme(r.id); return; }
+    for (const r of L.trails) if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) { tryEquipOrBuyTrail(r.id); return; }
+    for (const r of L.settings) if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) { toggleSetting(r.id); return; }
+    return;
+  }
   if (state === ST_PLAY) { judge(); inputLockUntil = now + 50; return; }
   if (state === ST_OVER) {
-    if (panelT < 0.4) return;                 // 400ms lockout
-    if (!countDone) { countDone = true; shownScore = score; inputLockUntil = now + 50; return; }  // 1st tap: skip count-up
-    startRun(); inputLockUntil = now + 50;
+    if (panelT < 0.4) return;
+    if (!countDone) { countDone = true; shownScore = score; inputLockUntil = now + 50; return; }
+    startRun(mode); inputLockUntil = now + 50;
   }
 }
 window.addEventListener('pointerdown', e => {
-  if (!e.isPrimary || e.button !== 0) return;   // ignore extra fingers / right-click
+  if (!e.isPrimary || e.button !== 0) return;
   e.preventDefault();
   onInput(e.clientX, e.clientY, true);
 }, { passive: false });
@@ -509,7 +989,6 @@ document.addEventListener('visibilitychange', () => {
 
 /* ---------------- update ---------------- */
 function update(dt) {
-  // real-time timers
   if (hitStop > 0) hitStop -= dt;
   timeScale = hitStop > 0 ? 0 : (state === ST_DYING ? 0.25 : 1);
   const sdt = dt * timeScale;
@@ -520,36 +999,48 @@ function update(dt) {
   if (streakDeflateT > 0) streakDeflateT -= dt;
   feverMix += ((fever ? 1 : 0) - feverMix) * Math.min(1, dt * 8);
 
-  if (state === ST_TITLE) {
+  if (state === ST_MENU || state === ST_COLLECTION) {
     needle = norm360(needle + 40 * dt);
   } else if (state === ST_PLAY) {
     if (grace > 0) {
-      grace -= dt;               // needle holds still, input ignored
+      grace -= dt;
     } else {
       if (speedEase < 1) speedEase = Math.min(1, speedEase + dt / 0.3);
       const advance = dir * omega(hits) * speedEase * sdt;
       needle = norm360(needle + advance);
       travelSinceSpawn += Math.abs(advance);
+      arcAge += sdt;
+      runElapsed += sdt;
+      if (mode === 'zen') {
+        zenTimeLeft -= sdt;
+        if (zenTimeLeft <= 0) { zenTimeLeft = 0; doZenTimeUp(); }
+      }
+      if (mode === 'classic') {
+        ghostRecordAcc += sdt;
+        if (ghostRecordAcc >= 0.05) {
+          ghostRecordAcc -= 0.05;
+          if (liveGhost.length < 2400) liveGhost.push({ t: Math.round(runElapsed * 1000) / 1000, a: needle });
+        }
+      }
     }
-    // fever timer (frozen during the post-refocus grace window)
     if (fever && grace <= 0) { feverT -= sdt; if (feverT <= 0) endFever(); }
-    // anticipation: pulse + click accelerando driven by time-to-arrival
-    const distAhead = norm360((arc.center - needle) * dir);
-    const tta = Math.max(0.001, distAhead / (omega(hits) * Math.max(speedEase, 0.01)));
-    pulsePhase += clamp(1 / tta, 1, 12) * sdt * TAU;
-    if (grace <= 0 && timeScale > 0) {
-      clickAcc += clamp(1 / tta, 2, 16) * sdt;
-      if (clickAcc >= 1) { clickAcc -= 1; sClick(); }
+    if (arc) {
+      const cNow = arcCenterNow();
+      const distAhead = norm360((cNow - needle) * dir);
+      const tta = Math.max(0.001, distAhead / (omega(hits) * Math.max(speedEase, 0.01)));
+      pulsePhase += clamp(1 / tta, 1, 12) * sdt * TAU;
+      if (grace <= 0 && timeScale > 0) {
+        clickAcc += clamp(1 / tta, 2, 16) * sdt;
+        if (clickAcc >= 1) { clickAcc -= 1; sClick(); }
+      }
     }
-    // fever needle trail
     if (fever) { trail.unshift(needle); if (trail.length > 10) trail.pop(); }
     else if (trail.length) trail.pop();
-    // heartbeat near record
-    hbOn = startBest > 0 && !recordBroken && score >= 0.85 * startBest;
+    hbOn = mode === 'classic' && startBest > 0 && !recordBroken && score >= 0.85 * startBest;
     if (hbOn) { hbTimer += dt; if (hbTimer >= 0.6) { hbTimer -= 0.6; sHeartbeat(); } }
   } else if (state === ST_DYING) {
     dieT += dt;
-    needle = norm360(needle + dir * omega(hits) * sdt);   // slow-mo drift
+    needle = norm360(needle + dir * omega(hits) * sdt);
     if (dieT >= 0.6) {
       state = ST_OVER; panelT = 0; countT = 0; countDone = false;
       shownScore = 0; lastBlip = -1; confettiFired = false;
@@ -566,14 +1057,13 @@ function update(dt) {
     }
     if (countDone && !confettiFired) {
       confettiFired = true;
-      if (newBest || newBestStreak) {
+      if ((newBest || newBestStreak) && !save.settings.reduceMotion) {
         for (let i = 0; i < 40; i++)
-          spawnP(rand(CX - 140, CX + 140), H - Math.min(420, H * 0.62) + 20, rand(-80, 80), rand(-320, -120), rand(0.8, 1.4), rand(3, 6), Math.random() < 0.5 ? COL.gold : COL.white, 1);
+          spawnP(rand(CX - 140, CX + 140), H - Math.min(420, H * 0.62) + 20, rand(-80, 80), rand(-320, -120), rand(0.8, 1.4), rand(3, 6), Math.random() < 0.5 ? PAL.perfect : COL.white, 1);
       }
     }
   }
 
-  // entities (world-time so hit-stop freezes them, dying slow-mos them)
   const edt = state === ST_OVER ? dt : sdt;
   for (let i = 0; i < POOL_N; i++) {
     const p = pool[i];
@@ -590,6 +1080,7 @@ function update(dt) {
   compact(pops, p => { p.life -= dt; p.y += p.vy * dt; return p.life > 0; });
   compact(banners, b => (b.t += dt) < b.dur);
   compact(stamps, s2 => (s2.t += dt) < s2.dur);
+  updateAchToast(dt);
 }
 function compact(arr, keepFn) {
   let w = 0;
@@ -604,7 +1095,7 @@ function mix(hex1, hex2, t) {
   return 'rgb(' + Math.round(lerp(a[0], b[0], t)) + ',' + Math.round(lerp(a[1], b[1], t)) + ',' + Math.round(lerp(a[2], b[2], t)) + ')';
 }
 const digitWidthCache = {};
-function drawTabular(text, x, y) {   // fixed-advance digits: score never jitters
+function drawTabular(text, x, y) {
   let dw = digitWidthCache[g.font];
   if (dw === undefined) { dw = g.measureText('0').width; digitWidthCache[g.font] = dw; }
   const total = text.length * dw;
@@ -624,18 +1115,15 @@ function arcStroke(center, width, radius, lw, style, blur, blurColor) {
 
 function render(now) {
   g.setTransform(DPR, 0, 0, DPR, 0, 0);
-  // screen shake
   if (shakeT > 0) {
     const m = shakeMag * (shakeT / 0.12) * (shakeT / 0.12);
     g.translate(rand(-m, m), rand(-m, m));
   }
-  // background
-  const bg = mix(COL.bg, COL.bgFever, feverMix);
+  const bg = mix(PAL.bg, PAL.bgFever, feverMix);
   g.fillStyle = bg;
   g.fillRect(-20, -20, W + 40, H + 40);
   g.fillStyle = ambientGrad;
   g.fillRect(-20, -20, W + 40, H + 40);
-  // heartbeat vignette
   if (hbOn && state === ST_PLAY) {
     const pulse = 0.10 + 0.06 * Math.max(0, Math.sin(hbTimer / 0.6 * TAU));
     g.globalAlpha = pulse;
@@ -644,51 +1132,55 @@ function render(now) {
     g.globalAlpha = 1;
   }
 
-  const inGame = state !== ST_TITLE;
+  const inGame = state === ST_PLAY || state === ST_DYING || state === ST_OVER;
 
-  // outer progress ring toward best (suppressed on first-ever run)
-  if (inGame && startBest > 0) {
+  if (inGame && mode === 'classic' && startBest > 0) {
     arcStroke(180, 360, R + 16, 4, 'rgba(255,255,255,0.07)');
     const frac = clamp(score / startBest, 0, 1);
     if (frac > 0)
-      arcStroke(frac * 180, frac * 360, R + 16, 4, recordBroken ? COL.gold : 'rgba(245,247,250,0.55)', recordBroken ? 8 : 0);
-    // gold notch at 12 o'clock = best
+      arcStroke(frac * 180, frac * 360, R + 16, 4, recordBroken ? PAL.perfect : 'rgba(245,247,250,0.55)', recordBroken ? 8 : 0);
     g.save();
-    g.strokeStyle = COL.gold; g.lineWidth = 3;
+    g.strokeStyle = PAL.perfect; g.lineWidth = 3;
     g.beginPath(); g.moveTo(CX, CY - R - 24); g.lineTo(CX, CY - R - 8); g.stroke();
     g.restore();
   }
 
-  // dial rim
-  g.beginPath();
-  g.arc(CX, CY, R, 0, TAU);
-  g.lineWidth = 2;
-  g.strokeStyle = 'rgba(245,247,250,0.12)';
-  g.stroke();
-  g.beginPath(); g.arc(CX, CY, 4, 0, TAU); g.fillStyle = 'rgba(245,247,250,0.5)'; g.fill();
-
-  // fever timer ring
-  if (fever) {
-    const ff = clamp(feverT / 6, 0, 1);
-    arcStroke(ff * 180, ff * 360, R - 12, 3, '#FF6AD5', 6);
+  if (state !== ST_COLLECTION) {
+    g.beginPath();
+    g.arc(CX, CY, R, 0, TAU);
+    g.lineWidth = 2;
+    g.strokeStyle = 'rgba(245,247,250,0.12)';
+    g.stroke();
+    g.beginPath(); g.arc(CX, CY, 4, 0, TAU); g.fillStyle = 'rgba(245,247,250,0.5)'; g.fill();
   }
 
-  // target arc
-  if (state === ST_PLAY || state === ST_DYING) {
+  if (fever) {
+    const ff = clamp(feverT / 6, 0, 1);
+    arcStroke(ff * 180, ff * 360, R - 12, 3, COL.fever, 6);
+  }
+
+  if ((state === ST_PLAY || state === ST_DYING) && arc) {
     const lw = Math.max(14, R * 0.10);
-    const goodCol = arc.gold ? COL.gold : COL.good;
-    arcStroke(arc.center, arc.w, R, lw, goodCol, 14, goodCol);
-    // perfect band with tension pulse
+    const cNow = arcCenterNow();
+    const goodCol = arc.gold ? PAL.perfect : PAL.good;
+
+    if (decoy) {
+      g.save();
+      g.setLineDash([9, 7]);
+      arcStroke(decoy.center, decoy.w, R, lw * 0.8, COL.decoy, 0);
+      g.restore();
+    }
+
+    arcStroke(cNow, arc.w, R, lw, goodCol, 14, goodCol);
     const P = effPerfW();
     const pb = 0.72 + 0.28 * Math.sin(pulsePhase);
     g.globalAlpha = state === ST_DYING ? 0.6 : pb;
-    arcStroke(arc.center, P, R, lw + 6, arc.gold ? '#FFF3C4' : COL.perfect, 18, COL.perfect);
+    arcStroke(cNow, P, R, lw + 6, arc.gold ? '#FFF3C4' : PAL.perfect, 18, PAL.perfect);
     g.globalAlpha = 1;
-    // gold sparkle shimmer
     if (arc.gold) {
       const t = now / 1000;
       for (let i = 0; i < 5; i++) {
-        const sa = arc.center - arc.w / 2 + ((t * 26 + i * 41) % arc.w);
+        const sa = cNow - arc.w / 2 + ((t * 26 + i * 41) % arc.w);
         const al = 0.4 + 0.6 * Math.abs(Math.sin(t * 5 + i * 1.7));
         g.globalAlpha = al;
         g.fillStyle = '#FFFFFF';
@@ -698,29 +1190,32 @@ function render(now) {
       }
       g.globalAlpha = 1;
     }
+    if (arc.mod === 'chain') {
+      for (let i = 0; i < 3; i++) {
+        g.fillStyle = i < chainTotal ? PAL.perfect : 'rgba(245,247,250,0.25)';
+        g.beginPath(); g.arc(CX - 20 + i * 20, CY - R - 66, 5, 0, TAU); g.fill();
+      }
+    }
   }
 
-  // arc fragments (shatter)
   if (frags.length) {
     g.save();
     for (const fr of frags) {
       g.globalAlpha = 1 - fr.t / 0.5;
       g.beginPath();
       g.arc(CX, CY, fr.r, rad(fr.a0), rad(fr.a0 + fr.span));
-      g.lineWidth = 8; g.strokeStyle = COL.perfect;
+      g.lineWidth = 8; g.strokeStyle = PAL.perfect;
       g.stroke();
     }
     g.restore(); g.globalAlpha = 1;
   }
 
-  // missed-edge flash
   for (const fl of flashes) {
     g.globalAlpha = (1 - fl.t / 0.5) * (Math.floor(fl.t * 12) % 2 === 0 ? 1 : 0.3);
     arcStroke(fl.ang, 4, R, Math.max(18, R * 0.12), '#FFFFFF', 16);
     g.globalAlpha = 1;
   }
 
-  // shockwaves
   for (const wv of waves) {
     const f = wv.t / 0.3;
     g.globalAlpha = 1 - f;
@@ -732,7 +1227,6 @@ function render(now) {
     g.globalAlpha = 1;
   }
 
-  // fever trail
   if (trail.length > 1) {
     g.save();
     g.globalCompositeOperation = 'lighter';
@@ -742,13 +1236,22 @@ function render(now) {
       g.moveTo(CX, CY);
       g.lineTo(tipX(trail[i]), tipY(trail[i]));
       g.lineWidth = 2.5;
-      g.strokeStyle = '#FF6AD5';
+      g.strokeStyle = TRAIL_COLOR;
       g.stroke();
     }
     g.restore(); g.globalAlpha = 1;
   }
 
-  // needle (+ghost when dying)
+  if (mode === 'classic' && state === ST_PLAY) {
+    const ga = ghostAngleAt(runElapsed);
+    if (ga !== null) {
+      g.save();
+      g.setLineDash([4, 5]); g.globalAlpha = 0.28; g.strokeStyle = '#9FB4FF'; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(CX, CY); g.lineTo(tipX(ga), tipY(ga)); g.stroke();
+      g.restore();
+    }
+  }
+
   const drawNeedle = (ang, alpha, color) => {
     g.save();
     g.globalAlpha = alpha;
@@ -758,25 +1261,24 @@ function render(now) {
     g.restore();
   };
   if (state === ST_DYING) {
-    drawNeedle(needle, 0.6, COL.needle);
+    drawNeedle(needle, 0.6, PAL.needle);
     if (Math.floor(dieT * 4) % 2 === 0) drawNeedle(ghostAngle, 0.4, COL.miss);
-  } else if (state !== ST_OVER) {
-    drawNeedle(needle, 1, COL.needle);
+  } else if (state === ST_MENU || state === ST_PLAY) {
+    drawNeedle(needle, 1, PAL.needle);
   }
 
-  // particles
   g.save();
   for (const p of pool) {
     if (!p.on) continue;
     const f = p.life / p.max;
     g.globalAlpha = f;
-    if (p.kind === 1) {          // confetti quad
+    if (p.kind === 1) {
       g.save();
       g.translate(p.x, p.y); g.rotate(p.rot);
       g.fillStyle = p.color;
       g.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
       g.restore();
-    } else {                     // additive spark
+    } else {
       g.globalCompositeOperation = 'lighter';
       g.fillStyle = p.color;
       g.beginPath(); g.arc(p.x, p.y, p.size * f, 0, TAU); g.fill();
@@ -785,7 +1287,6 @@ function render(now) {
   }
   g.restore(); g.globalAlpha = 1;
 
-  // floating popups
   for (const p of pops) {
     const f = p.life / p.max;
     let sc = 1;
@@ -798,7 +1299,6 @@ function render(now) {
   }
   g.globalAlpha = 1;
 
-  // banners (slide in from left with back-ease)
   for (const b of banners) {
     const f = clamp(b.t / 0.3, 0, 1);
     const x = lerp(-260, CX, backOut(f));
@@ -808,12 +1308,25 @@ function render(now) {
     g.textAlign = 'center'; g.textBaseline = 'middle';
     g.shadowBlur = 16; g.shadowColor = b.color;
     g.fillStyle = b.color;
-    g.fillText(b.text, x, CY - R - 46);
+    g.fillText(b.text, x, CY - R - 46 - (b.slot || 0) * 34);
     g.shadowBlur = 0;
   }
   g.globalAlpha = 1;
 
-  // center stamps (피버!)
+  if (achToast && (state === ST_PLAY || state === ST_DYING)) {
+    const f = clamp(achToast.t / 0.3, 0, 1);
+    const x = lerp(CX + 260, CX, backOut(f));
+    const fade = achToast.t > achToast.dur - 0.3 ? (achToast.dur - achToast.t) / 0.3 : 1;
+    g.globalAlpha = fade;
+    g.font = '700 21px ' + FONT;
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.shadowBlur = 14; g.shadowColor = COL.ach;
+    g.fillStyle = COL.ach;
+    g.fillText(achToast.text, x, CY - R - 12);
+    g.shadowBlur = 0;
+    g.globalAlpha = 1;
+  }
+
   for (const s2 of stamps) {
     const f = clamp(s2.t / 0.25, 0, 1);
     const sc = lerp(2.2, 1, backOut(f));
@@ -828,107 +1341,144 @@ function render(now) {
   }
   g.globalAlpha = 1;
 
-  if (state === ST_TITLE) renderTitle(now);
-  if (inGame) renderHUD();
+  if (state === ST_MENU) renderMenu(now);
+  if (state === ST_COLLECTION) renderCollection(now);
+  if (state === ST_PLAY || state === ST_DYING) renderHUD();
   if (state === ST_DYING) renderDying();
   if (state === ST_OVER) renderPanel(now);
 
   renderMute();
+  if (state !== ST_MENU) renderBackBtn();
 }
 
-function renderTitle(now) {
+function renderMenu(now) {
   g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillStyle = COL.needle;
-  g.font = '900 ' + Math.round(Math.min(96, W * 0.2)) + 'px ' + FONT;
-  g.shadowBlur = 30; g.shadowColor = COL.good;
-  g.fillText(S.title, CX, CY - R * 0.42);
+  g.fillStyle = PAL.needle;
+  const titleSize = Math.round(Math.min(88, W * 0.19));
+  g.font = '900 ' + titleSize + 'px ' + FONT;
+  g.shadowBlur = 30; g.shadowColor = PAL.good;
+  g.fillText(S.title, CX, CY - R * 0.62);
   g.shadowBlur = 0;
-  g.font = '400 17px ' + FONT;
+  g.font = '400 16px ' + FONT;
   g.fillStyle = COL.gray;
-  g.fillText(S.tagline, CX, CY - R * 0.42 + Math.min(96, W * 0.2) * 0.62);
-  // records
-  g.font = '500 15px ' + FONT;
-  g.fillStyle = 'rgba(245,247,250,0.75)';
-  const ry = CY + R * 0.28;
-  g.fillText(S.lblBest + '  ' + save.bestScore, CX, ry);
-  g.fillText(S.lblBestStreak + '  ' + save.bestStreak, CX, ry + 24);
-  g.fillText(S.lblLifetime + '  ' + save.lifetimePerfects, CX, ry + 48);
+  g.fillText(S.tagline, CX, CY - R * 0.62 + titleSize * 0.62);
+
+  g.font = '500 13px ' + FONT;
+  g.fillStyle = 'rgba(245,247,250,0.7)';
+  const ry = CY - R * 0.62 + titleSize * 0.62 + 34;
+  g.fillText(S.lvLabel(save.level) + '   ' + S.lblBest + ' ' + save.bestScore + '   ' + S.coinsLabel(save.coins), CX, ry);
   if (save.totalRuns === 0) {
-    g.fillStyle = COL.perfect;
-    g.font = '600 16px ' + FONT;
-    g.fillText(S.hint, CX, ry + 84);
+    g.fillStyle = PAL.perfect;
+    g.font = '600 14px ' + FONT;
+    g.fillText(S.hint, CX, ry + 22);
   }
+
+  const cards = getMenuCardRects();
+  for (const c of cards) {
+    g.save();
+    g.beginPath();
+    g.roundRect(c.x, c.y, c.w, c.h, 14);
+    g.fillStyle = c.locked ? 'rgba(245,247,250,0.05)' : 'rgba(245,247,250,0.10)';
+    g.fill();
+    if (!c.locked) { g.lineWidth = 1.5; g.strokeStyle = 'rgba(245,247,250,0.18)'; g.stroke(); }
+    g.fillStyle = c.locked ? COL.gray : PAL.needle;
+    g.font = '700 19px ' + FONT;
+    g.fillText(c.label, c.x + c.w / 2, c.y + c.h / 2 - (c.locked ? 8 : 0));
+    if (c.locked) {
+      g.font = '600 12px ' + FONT;
+      g.fillStyle = PAL.good;
+      g.fillText(S.lockedLv(c.lv), c.x + c.w / 2, c.y + c.h / 2 + 14);
+    } else if (c.id === 'daily' && save.dailyStreak > 0) {
+      g.font = '600 12px ' + FONT;
+      g.fillStyle = PAL.perfect;
+      g.fillText(S.dailyStreakLine(save.dailyStreak), c.x + c.w / 2, c.y + c.h - 10);
+    }
+    g.restore();
+  }
+
   const pulse = 0.55 + 0.45 * Math.sin(now / 400);
-  g.globalAlpha = pulse;
-  g.fillStyle = COL.needle;
-  g.font = '700 20px ' + FONT;
-  g.fillText(S.tapStart, CX, H - Math.max(48, H * 0.08));
+  g.globalAlpha = pulse * 0.7;
+  g.fillStyle = COL.gray;
+  g.font = '500 12px ' + FONT;
+  g.fillText('↑ 카드를 탭해서 선택', CX, cards[0].y - 14);
   g.globalAlpha = 1;
 }
 
 function renderHUD() {
   g.textAlign = 'center'; g.textBaseline = 'middle';
-  // score
-  g.fillStyle = scoreGold ? COL.gold : COL.needle;
-  g.font = '800 48px ' + FONT;
-  if (scoreGold) { g.shadowBlur = 14; g.shadowColor = COL.gold; }
-  drawTabular(String(score), CX, 58);
+  g.fillStyle = scoreGold ? PAL.perfect : PAL.needle;
+  g.font = '800 44px ' + FONT;
+  if (scoreGold) { g.shadowBlur = 14; g.shadowColor = PAL.perfect; }
+  drawTabular(String(score), CX, 56);
   g.shadowBlur = 0;
-  // multiplier chip
+
   const m = mult(streak);
   if (state === ST_PLAY || state === ST_DYING) {
     let chipScale = 1;
     if (streakDeflateT > 0) chipScale = lerp(1.3, 1, easeOut(1 - streakDeflateT / 0.12));
-    const chipX = CX + 30 + String(score).length * 14 + 26;
+    const chipX = CX + 28 + String(score).length * 13 + 24;
     g.save();
-    g.translate(chipX, 58); g.scale(chipScale, chipScale); g.translate(-chipX, -58);
-    g.fillStyle = m > 1 ? COL.perfect : 'rgba(245,247,250,0.25)';
+    g.translate(chipX, 56); g.scale(chipScale, chipScale); g.translate(-chipX, -56);
+    g.fillStyle = m > 1 ? PAL.perfect : 'rgba(245,247,250,0.25)';
     g.beginPath();
-    const cw = 46, ch = 26;
-    g.roundRect(chipX - cw / 2, 58 - ch / 2, cw, ch, 13);
+    const cw = 44, ch = 25;
+    g.roundRect(chipX - cw / 2, 56 - ch / 2, cw, ch, 12);
     g.fill();
     g.fillStyle = m > 1 ? '#1A1408' : COL.gray;
-    g.font = '800 16px ' + FONT;
-    g.fillText('x' + m, chipX, 59);
+    g.font = '800 15px ' + FONT;
+    g.fillText('x' + m, chipX, 57);
     g.restore();
   }
-  // streak line (grows with streak, scale-punches on each perfect)
+
   if (streak > 0) {
     let scale = 1;
     if (streakPunchT > 0) scale = 1 + 0.3 * Math.sin((1 - streakPunchT / 0.15) * Math.PI);
     g.save();
-    g.translate(CX, 96); g.scale(scale, scale);
-    g.fillStyle = COL.perfect;
-    g.font = '700 ' + Math.min(24 + streak, 40) + 'px ' + FONT;
+    g.translate(CX, 92); g.scale(scale, scale);
+    g.fillStyle = PAL.perfect;
+    g.font = '700 ' + Math.min(22 + streak, 36) + 'px ' + FONT;
     g.fillText(S.streak(streak), 0, 0);
     g.restore();
   }
-  // record proximity
+
   if (hbOn && state === ST_PLAY) {
-    g.fillStyle = COL.gold;
-    g.font = '600 15px ' + FONT;
-    g.fillText(S.toBest(startBest - score), CX, streak > 0 ? 124 : 96);
+    g.fillStyle = PAL.perfect;
+    g.font = '600 14px ' + FONT;
+    g.fillText(S.toBest(startBest - score), CX, streak > 0 ? 118 : 92);
   }
+
+  // level badge, top-left (below back button)
+  g.textAlign = 'left';
+  g.fillStyle = 'rgba(245,247,250,0.55)';
+  g.font = '600 12px ' + FONT;
+  g.fillText(S.lvLabel(save.level), 14, 66 + safeTop);
+
+  if (mode === 'zen' && state === ST_PLAY) {
+    g.textAlign = 'right';
+    g.fillStyle = zenTimeLeft <= 10 ? COL.miss : COL.gray;
+    g.font = '600 13px ' + FONT;
+    g.fillText(S.zenTimeLeft(Math.ceil(zenTimeLeft)), W - 56 - safeRight, 30 + safeTop);
+  }
+  g.textAlign = 'center';
 }
 
 function renderDying() {
   const f = clamp(dieT / 0.6, 0, 1);
   g.fillStyle = 'rgba(90,96,110,' + (0.55 * f).toFixed(3) + ')';
   g.fillRect(-20, -20, W + 40, H + 40);
-  // delta text punches in at 3x then settles with overshoot
   const tf = clamp(dieT / 0.35, 0, 1);
   const sc = lerp(3, 1, backOut(tf));
   g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillStyle = COL.miss;
-  g.font = '900 ' + Math.round(Math.min(40, W * 0.09) * sc) + 'px ' + FONT;
-  const msg = (missLate ? S.missLate : S.missEarly)(missSecs.toFixed(3));
+  g.font = '900 ' + Math.round(Math.min(38, W * 0.085) * sc) + 'px ' + FONT;
+  const msg = deathReason === 'decoy' ? S.decoyMissMsg : (missLate ? S.missLate : S.missEarly)(missSecs.toFixed(3));
   g.shadowBlur = 20; g.shadowColor = COL.miss;
   g.fillText(msg, CX, CY + R * 0.55);
   g.shadowBlur = 0;
 }
 
 function renderPanel(now) {
-  const Hp = Math.min(420, H * 0.62);
+  const Hp = Math.min(440, H * 0.66);
   const f = clamp(panelT / 0.25, 0, 1);
   const top = H - Hp * backOut(f);
   g.save();
@@ -937,58 +1487,156 @@ function renderPanel(now) {
   g.roundRect(8, top, W - 16, Hp + 24, 18);
   g.fill();
   if (newBest) {
-    g.strokeStyle = COL.gold; g.lineWidth = 2;
-    g.shadowBlur = 12; g.shadowColor = COL.gold;
+    g.strokeStyle = PAL.perfect; g.lineWidth = 2;
+    g.shadowBlur = 12; g.shadowColor = PAL.perfect;
     g.beginPath(); g.roundRect(8, top, W - 16, Hp + 24, 18); g.stroke();
     g.shadowBlur = 0;
   }
   g.textAlign = 'center'; g.textBaseline = 'middle';
-  // taunt
   g.fillStyle = COL.gray;
-  g.font = '600 17px ' + FONT;
-  g.fillText(tauntText, CX, top + 40);
-  // score
-  g.fillStyle = COL.gray; g.font = '500 15px ' + FONT;
-  g.fillText(S.lblScore, CX, top + 78);
-  g.fillStyle = newBest ? COL.gold : COL.needle;
-  g.font = '800 54px ' + FONT;
-  drawTabular(String(shownScore), CX, top + 118);
-  // record rows
-  const rows = [
-    [S.lblBest, save.bestScore, newBest],
-    [S.lblBestStreak, save.bestStreak, newBestStreak],
-    [S.lblLifetime, save.lifetimePerfects, false],
-  ];
-  let ry = top + 176;
+  g.font = '600 16px ' + FONT;
+  g.fillText(tauntText, CX, top + 38);
+  g.fillStyle = COL.gray; g.font = '500 14px ' + FONT;
+  g.fillText(S.lblScore, CX, top + 74);
+  g.fillStyle = newBest ? PAL.perfect : PAL.needle;
+  g.font = '800 50px ' + FONT;
+  drawTabular(String(shownScore), CX, top + 112);
+
+  let rows;
+  if (mode === 'zen') {
+    rows = [[S.zenResultBest, save.zenBest, save.zenBest === score && score > 0], [S.lblLifetime, save.lifetimePerfects, false]];
+  } else if (mode === 'daily') {
+    rows = [[S.dailyResultBest, save.dailyBestByDate[kstDateStr()] || 0, newBest], [S.lblBestStreak, save.bestStreak, newBestStreak]];
+  } else {
+    rows = [[S.lblBest, save.bestScore, newBest], [S.lblBestStreak, save.bestStreak, newBestStreak], [S.lblLifetime, save.lifetimePerfects, false]];
+  }
+  let ry = top + 164;
   for (const [lbl, val, isNew] of rows) {
     g.textAlign = 'left';
-    g.fillStyle = COL.gray; g.font = '500 15px ' + FONT;
+    g.fillStyle = COL.gray; g.font = '500 14px ' + FONT;
     g.fillText(lbl, CX - 130, ry);
     g.textAlign = 'right';
-    g.fillStyle = COL.needle; g.font = '700 18px ' + FONT;
+    g.fillStyle = PAL.needle; g.font = '700 17px ' + FONT;
     g.fillText(String(val), CX + (isNew ? 74 : 130), ry);
     if (isNew && countDone) {
       const pulse2 = 1 + 0.12 * Math.sin(now / 120);
       g.textAlign = 'right';
-      g.fillStyle = COL.gold;
+      g.fillStyle = PAL.perfect;
       g.font = '800 ' + Math.round(15 * pulse2) + 'px ' + FONT;
-      g.shadowBlur = 10; g.shadowColor = COL.gold;
+      g.shadowBlur = 10; g.shadowColor = PAL.perfect;
       g.fillText(S.newFlare, CX + 130, ry);
       g.shadowBlur = 0;
     }
-    ry += 34;
+    ry += 30;
   }
-  // restart prompt (after lockout)
+
+  if (countDone) {
+    g.textAlign = 'center';
+    g.fillStyle = COL.ach; g.font = '600 15px ' + FONT;
+    g.fillText(S.resultReward(lastRunXP, lastRunCoins), CX, ry + 6);
+    ry += 26;
+    if (pendingLevelUps.length) {
+      g.fillStyle = PAL.perfect; g.font = '700 15px ' + FONT;
+      g.fillText(S.levelUp(pendingLevelUps[pendingLevelUps.length - 1]), CX, ry + 6);
+    }
+  }
+
   if (panelT >= 0.4) {
     const pulse = 0.55 + 0.45 * Math.sin(now / 400);
     g.globalAlpha = pulse;
     g.textAlign = 'center';
-    g.fillStyle = COL.needle;
-    g.font = '700 19px ' + FONT;
-    g.fillText(S.tapRestart, CX, top + Hp - 36);
+    g.fillStyle = PAL.needle;
+    g.font = '700 18px ' + FONT;
+    g.fillText(S.tapRestart, CX, top + Hp - 34);
     g.globalAlpha = 1;
   }
   g.restore();
+}
+
+function renderCollection(now) {
+  const L = layoutCollection();
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = PAL.needle; g.font = '800 24px ' + FONT;
+  g.fillText(S.collectionTitle, CX, L.headerY);
+
+  // level/xp bar
+  const barW = Math.min(300, W - 64), barH = 10;
+  const need = xpToNext(save.level);
+  const frac = clamp(save.xp / need, 0, 1);
+  g.save();
+  g.beginPath(); g.roundRect(CX - barW / 2, L.levelBarY, barW, barH, 5);
+  g.fillStyle = 'rgba(245,247,250,0.12)'; g.fill();
+  if (frac > 0) {
+    g.beginPath(); g.roundRect(CX - barW / 2, L.levelBarY, barW * frac, barH, 5);
+    g.fillStyle = PAL.perfect; g.fill();
+  }
+  g.restore();
+  g.fillStyle = COL.gray; g.font = '600 13px ' + FONT;
+  g.fillText(S.lvLabel(save.level) + '  ·  ' + save.xp + '/' + need + ' XP', CX, L.levelBarY - 14);
+
+  g.fillStyle = PAL.perfect; g.font = '700 15px ' + FONT;
+  g.fillText(S.coinsLabel(save.coins), CX, L.coinsY);
+
+  const unlockedCount = ACH_ORDER.filter(id => save.achievements[id]).length;
+  g.fillStyle = COL.gray; g.font = '600 13px ' + FONT;
+  g.fillText(S.achLabel(unlockedCount, ACH_ORDER.length), CX, L.achLabelY);
+  for (const d of L.achDots) {
+    const on = !!save.achievements[d.id];
+    g.beginPath(); g.arc(d.x, d.y, d.r, 0, TAU);
+    g.fillStyle = on ? PAL.perfect : 'rgba(245,247,250,0.15)';
+    g.fill();
+    if (on) { g.shadowBlur = 8; g.shadowColor = PAL.perfect; g.fill(); g.shadowBlur = 0; }
+  }
+
+  g.fillStyle = COL.gray; g.font = '600 13px ' + FONT;
+  g.fillText(S.themesLabel, CX, L.themesLabelY);
+  for (const t of L.themes) {
+    const meta = THEMES[t.id];
+    const unlocked = isThemeUnlocked(t.id);
+    const active = save.activeTheme === t.id;
+    g.beginPath(); g.arc(t.x + t.w / 2, t.y + t.h / 2, t.w / 2, 0, TAU);
+    g.fillStyle = meta.bg; g.fill();
+    g.lineWidth = active ? 3 : 1.5;
+    g.strokeStyle = active ? PAL.perfect : (unlocked ? 'rgba(245,247,250,0.4)' : 'rgba(245,247,250,0.15)');
+    g.stroke();
+    g.beginPath(); g.arc(t.x + t.w / 2, t.y + t.h / 2, 6, 0, TAU); g.fillStyle = meta.perfect; g.fill();
+    g.fillStyle = unlocked ? COL.gray : 'rgba(138,147,166,0.6)';
+    g.font = '500 10px ' + FONT;
+    g.fillText(unlocked ? meta.name : S.priceLabel(meta.price), t.x + t.w / 2, t.y + t.h + 12);
+  }
+
+  g.fillStyle = COL.gray; g.font = '600 13px ' + FONT;
+  g.fillText(S.trailsLabel, CX, L.trailsLabelY);
+  for (const t of L.trails) {
+    const meta = TRAILS[t.id];
+    const unlocked = isTrailUnlocked(t.id);
+    const active = save.activeTrail === t.id;
+    g.beginPath(); g.arc(t.x + t.w / 2, t.y + t.h / 2, t.w / 2, 0, TAU);
+    g.fillStyle = 'rgba(245,247,250,0.08)'; g.fill();
+    g.lineWidth = active ? 3 : 1.5;
+    g.strokeStyle = active ? meta.color : (unlocked ? 'rgba(245,247,250,0.4)' : 'rgba(245,247,250,0.15)');
+    g.stroke();
+    g.beginPath(); g.arc(t.x + t.w / 2, t.y + t.h / 2, 6, 0, TAU); g.fillStyle = meta.color; g.fill();
+    g.fillStyle = unlocked ? COL.gray : 'rgba(138,147,166,0.6)';
+    g.font = '500 10px ' + FONT;
+    g.fillText(unlocked ? meta.name : S.priceLabel(meta.price), t.x + t.w / 2, t.y + t.h + 12);
+  }
+
+  for (const s2 of L.settings) {
+    g.save();
+    g.beginPath(); g.roundRect(s2.x, s2.y, s2.w, s2.h, 10);
+    g.fillStyle = 'rgba(245,247,250,0.06)'; g.fill();
+    g.textAlign = 'left';
+    g.fillStyle = PAL.needle; g.font = '600 14px ' + FONT;
+    g.fillText(s2.label, s2.x + 14, s2.y + s2.h / 2);
+    const on = !!save.settings[s2.id];
+    g.textAlign = 'right';
+    g.fillStyle = on ? PAL.perfect : COL.gray;
+    g.font = '700 13px ' + FONT;
+    g.fillText(on ? S.onLabel : S.offLabel, s2.x + s2.w - 14, s2.y + s2.h / 2);
+    g.restore();
+  }
+  g.textAlign = 'center';
 }
 
 function renderMute() {
@@ -996,8 +1644,7 @@ function renderMute() {
   const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
   g.save();
   g.globalAlpha = 0.75;
-  g.strokeStyle = COL.needle; g.fillStyle = COL.needle; g.lineWidth = 2;
-  // speaker body
+  g.strokeStyle = PAL.needle; g.fillStyle = PAL.needle; g.lineWidth = 2;
   g.beginPath();
   g.moveTo(cx - 9, cy - 4); g.lineTo(cx - 4, cy - 4); g.lineTo(cx + 2, cy - 9);
   g.lineTo(cx + 2, cy + 9); g.lineTo(cx - 4, cy + 4); g.lineTo(cx - 9, cy + 4);
@@ -1010,6 +1657,18 @@ function renderMute() {
     g.beginPath(); g.arc(cx + 4, cy, 5, -0.9, 0.9); g.stroke();
     g.beginPath(); g.arc(cx + 4, cy, 9, -0.9, 0.9); g.stroke();
   }
+  g.restore();
+}
+
+function renderBackBtn() {
+  const r = backBtnRect();
+  const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+  g.save();
+  g.globalAlpha = 0.75;
+  g.strokeStyle = PAL.needle; g.lineWidth = 2.4; g.lineCap = 'round'; g.lineJoin = 'round';
+  g.beginPath();
+  g.moveTo(cx + 8, cy - 9); g.lineTo(cx - 4, cy); g.lineTo(cx + 8, cy + 9);
+  g.stroke();
   g.restore();
 }
 
