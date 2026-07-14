@@ -332,3 +332,49 @@ Theme = `{bg, bgFever, needle, good, perfect}` palette swap, applied everywhere 
 ## 22. Cut list (v2)
 
 No real-money anything, no ads, no social/share/network features, no PvP or online leaderboard (daily "streak vs yesterday" stays local), no energy/stamina gating replay, no loot-box style randomness on cosmetics (fixed price, fixed catalog, always visible even when locked so there's no mystery-box tension).
+
+---
+
+# PART III — DESKTOP EDITION ("찰나 아케이드")
+
+Where Parts I–II are the single-file web build (`/index.html`, still maintained standalone), Part III describes `/desktop/` — an Electron-packaged arcade **compilation**: CHALNA plus three genre-distinct siblings under one shared shell, aimed at real installable-desktop distribution (Steam-capable) rather than a browser tab. This is a deliberate scope escalation from "one hyper-casual mechanic" to "one cohesive product, several mechanics" — the honest ceiling of what's buildable here: no bitmap/photographic art (no image-generation tool in this environment — the whole visual language stays Canvas 2D vector/glow/particles, the same toolkit that already carried Parts I–II), and no Steamworks submission (that requires the studio's own developer account and store-page process, outside this repo).
+
+## 23. Why a compilation, not one bigger game
+
+The two production gaps named for "sellable" were **visual/art quality** and **content/genre diversity**. Diversity is solved by adding mechanically distinct games rather than bolting more systems onto CHALNA's single rotational-timing loop (which would dilute its own clarity — see Part I §1's original constraints). Visual quality is solved by a shared, disciplined art direction (one palette system, one particle/juice vocabulary, one typographic scale) applied consistently across all four games, rather than each game inventing its own look — consistency reads as "produced," not the number of colors on screen.
+
+## 24. Architecture
+
+```
+desktop/
+  package.json, main.js, preload.js        — Electron shell (BrowserWindow loading src/index.html)
+  src/
+    index.html                             — canvas + <script> includes, CSP-locked (script-src 'self')
+    core/
+      util.js        — math/easing/PRNG, shared by every game
+      audio.js        — one WebAudio graph (bus → compressor → master), tone()/noise() synthesis
+      sfx.js          — named cross-game sounds (click/milestone/achievement/level-up/miss/good/...)
+      fx.js           — shared particle pool, popups, banners (max 3 concurrent slots), stamps,
+                        shockwaves, and the one-at-a-time achievement toast queue
+      theme.js        — 4 themes × 3 trails, good=cyan-family/perfect=gold-family in every theme
+      save.js         — ONE profile: global xp/level/coins/achievements/cosmetics/settings, plus
+                        data.games[id] for each game's own local records
+      achievements.js  — cross-game unlock ledger; games register their own ids/names at load time
+    games/
+      _template.js    — the module contract (not loaded by index.html; copy its shape)
+      chalna.js        — the flagship, ported from Part II onto the shared core
+      seomgwang.js     — 반응속도 (reflex): tap a shrinking-window flash before it expires
+      maeari.js        — 기억력 (memory): Simon-says pad sequence, grows one step per round
+      nakha.js         — 순발력 (spatial reflex): lane-based catch/dodge under falling objects
+    hub.js             — canvas owner, rAF loop, resize, input routing, HOME/GAME/COLLECTION states
+```
+
+Every game is a plain object on `window.Games[id]` implementing `init/onEnter/onExit/resize/update/render/onPointer/onKey/summary` (see `_template.js` for the exact contract) — the hub never reaches into a game's internals, and a game never touches the DOM, another game, or global input listeners directly.
+
+## 25. What became global vs. what stayed per-game
+
+Progression is the whole point of a compilation feeling like one product rather than four demos, so **level, XP, coins, cosmetics, and settings are one shared profile** — clearing a round of 메아리 raises the same level that unlocks CHALNA's 체인 arcs. Each game keeps its **own** high-score-shaped records (`Save.gameData(id, defaults)`), its own achievement ids (namespaced, e.g. `chalna_streak_10` vs a future `seomgwang_streak_10`), and — critically — its own internal mode-select/results screens; only the outermost "which game, plus 도감/설정" layer is shared. CHALNA's own in-game 도감 was removed in this port (superseded by the hub's global one); its Lv.2-gated daily-mode card stayed, since "unlock the next thing after a little play" is still a fine per-game rhythm even inside a shared meta-economy.
+
+## 26. Known environment limitation (read before assuming a build was verified end-to-end)
+
+This sandbox's egress policy allows `registry.npmjs.org` but returns 403 on `github.com/*/releases/*` — Electron's own postinstall step downloads its prebuilt binary from a GitHub release, so `npm install` completes but the `electron` binary itself cannot be fetched here, and no `.exe`/`.app`/AppImage has been produced or launched inside this environment. What **was** verified here: every renderer file (`core/*.js`, `hub.js`, `games/*.js`) headlessly in real Chromium via Playwright — the same rendering engine Electron embeds — clicking through hub → each game → results → back, forcing verdict paths via a temporary debug hook (removed before shipping, same technique Part II's build used). `npm install && npm start` on a machine with normal network access is expected to produce a running window from this code as-is; that step has not been exercised on real Electron by this session.

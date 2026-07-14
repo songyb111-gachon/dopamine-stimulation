@@ -1,0 +1,30 @@
+{
+  "name": "chalna-arcade",
+  "version": "0.1.0",
+  "description": "찰나 아케이드 — 원형 다이얼 타이밍 게임과 함께하는 데스크톱 아케이드 컴필레이션",
+  "main": "main.js",
+  "author": "songyb111-gachon",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "start:headless": "electron . --enable-logging",
+    "dist": "electron-builder",
+    "dist:linux": "electron-builder --linux AppImage",
+    "dist:win": "electron-builder --win nsis",
+    "dist:mac": "electron-builder --mac dmg"
+  },
+  "devDependencies": {
+    "electron": "^43.1.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.chalna.arcade",
+    "productName": "찰나 아케이드",
+    "directories": { "output": "dist", "buildResources": "build" },
+    "files": ["main.js", "preload.js", "src/**/*"],
+    "linux": { "target": ["AppImage"], "category": "Game" },
+    "win": { "target": ["nsis"] },
+    "mac": { "target": ["dmg"], "category": "public.app-category.games" }
+  }
+}
