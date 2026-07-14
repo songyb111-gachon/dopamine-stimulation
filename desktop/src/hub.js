@@ -103,7 +103,7 @@
   function getCardRects() {
     const list = gameList();
     const cardW = Math.min(340, W - 48), cardH = 64, gap = 12;
-    const total = list.length * cardH + (list.length - 1) * gap + 2 * (cardH * 0.72 + gap);
+    const total = list.length * cardH + list.length * gap + cardH * 0.72;
     const startY = Math.max(CY - total / 2 + 40, 150);
     const x = CX - cardW / 2;
     const rects = list.map((gm, i) => ({ id: gm.id, gm, x, y: startY + i * (cardH + gap), w: cardW, h: cardH }));
@@ -168,14 +168,21 @@
 
   /* ---------------- collection screen ---------------- */
   function collectionLayout() {
-    const top = 64;
+    // Achievement count grows with every game registered (4 games + meta = 38 at
+    // last count, up from the ~18 this screen was first sized for), and this
+    // canvas has no scroll — an integration screenshot caught the colorblind
+    // toggle pushed clean off the bottom of an 800px-tall window. Everything
+    // below is sized to comfortably fit 40-50+ achievements without scrolling;
+    // grid columns scale up first, so the row count stays low as the roster grows.
+    const top = 56;
     let y = top;
     const L = {};
-    L.headerY = y; y += 36;
-    L.levelBarY = y; y += 34;
-    L.coinsY = y; y += 30;
-    L.achLabelY = y; y += 20;
-    const cols = 6, rows = Math.ceil(Ach.total / cols), dot = 8, dgap = 15;
+    L.headerY = y; y += 30;
+    L.levelBarY = y; y += 28;
+    L.coinsY = y; y += 24;
+    L.achLabelY = y; y += 16;
+    const cols = Math.min(10, Math.max(6, Math.ceil(Math.sqrt(Ach.total * 2.2))));
+    const rows = Math.ceil(Ach.total / cols), dot = 6, dgap = 10;
     const gw = cols * dot * 2 + (cols - 1) * dgap;
     const ax0 = CX - gw / 2;
     L.achDots = [];
@@ -184,28 +191,30 @@
       const c = i % cols, r = (i / cols) | 0;
       L.achDots.push({ item: list[i], x: ax0 + c * (dot * 2 + dgap) + dot, y: y + r * (dot * 2 + dgap) + dot, r: dot });
     }
-    y += rows * (dot * 2 + dgap) + 14;
-    L.gamesLabelY = y; y += 20;
+    y += rows * (dot * 2 + dgap) + 10;
+    L.gamesLabelY = y; y += 16;
     const list2 = gameList();
-    L.gameStats = list2.map((gm, i) => ({ gm, y: y + i * 26 }));
-    y += list2.length * 26 + 14;
-    L.themesLabelY = y; y += 20;
-    const themeIds = Object.keys(Theme.THEMES), tsize = 50, tgap = 14;
+    L.gameStats = list2.map((gm, i) => ({ gm, y: y + i * 20 }));
+    y += list2.length * 20 + 10;
+    L.themesLabelY = y; y += 16;
+    const themeIds = Object.keys(Theme.THEMES), tsize = 42, tgap = 12;
     const tw = themeIds.length * tsize + (themeIds.length - 1) * tgap;
     const tx0 = CX - tw / 2;
     L.themes = themeIds.map((id, i) => ({ id, x: tx0 + i * (tsize + tgap), y, w: tsize, h: tsize }));
-    y += tsize + 30;
-    L.trailsLabelY = y; y += 20;
-    const trailIds = Object.keys(Theme.TRAILS), rsize = 50, rgap = 14;
+    y += tsize + 22;
+    L.trailsLabelY = y; y += 16;
+    const trailIds = Object.keys(Theme.TRAILS), rsize = 42, rgap = 12;
     const rw = trailIds.length * rsize + (trailIds.length - 1) * rgap;
     const rx0 = CX - rw / 2;
     L.trails = trailIds.map((id, i) => ({ id, x: rx0 + i * (rsize + rgap), y, w: rsize, h: rsize }));
-    y += rsize + 26;
-    const sw = Math.min(300, W - 48), sh = 38, sgap = 10;
+    y += rsize + 20;
+    const sw = Math.min(300, W - 48), sh = 34, sgap = 8;
     L.settings = [
       { id: 'reduceMotion', label: '모션 줄이기', x: CX - sw / 2, y, w: sw, h: sh },
       { id: 'colorblind', label: '고대비 색상', x: CX - sw / 2, y: y + sh + sgap, w: sw, h: sh },
     ];
+    y += 2 * sh + sgap + 16;
+    L.contentBottom = y;
     return L;
   }
 
@@ -456,6 +465,15 @@
     Save.load();
     FX.init();
     resize();
+    // Eagerly init every game (not just the one the player first opens) so every
+    // game's achievements are registered before 도감 is ever opened — otherwise
+    // the achievement roster/count silently grows each time a new game is
+    // launched for the first time, which reads as a bug rather than a feature.
+    // init() only registers metadata + a defensive audio "send" (createSend()
+    // no-ops safely without an AudioContext yet), so this is cheap and side-effect-free.
+    for (const gm of gameList()) {
+      if (!gm.__inited) { gm.init(hubAPI); gm.__inited = true; }
+    }
     requestAnimationFrame(frame);
   }
 

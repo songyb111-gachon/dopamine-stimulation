@@ -359,23 +359,27 @@ window.Games = window.Games || {};
     },
 
     renderHud(g) {
+      // NOTE: the hub draws its own back (top-left) and mute (top-right) icons in
+      // a fixed ~12-44px box in both corners on top of whatever we render, so our
+      // own HUD text must clear y<58 entirely in both corners (found via an actual
+      // integration screenshot: "점수"/back-arrow were overlapping at y=28).
       const hub = this.hub, PAL = Theme.PAL, SEM = Theme.SEM;
       g.textAlign = 'left'; g.textBaseline = 'alphabetic';
       g.fillStyle = SEM.gray; g.font = '600 11px ' + U.FONT;
-      g.fillText('점수', 16, 28);
+      g.fillText('점수', 16, 62);
       g.fillStyle = PAL.ink; g.font = '800 22px ' + U.FONT;
-      g.fillText(String(this.score), 16, 50);
+      g.fillText(String(this.score), 16, 84);
       g.fillStyle = SEM.gray; g.font = '500 11px ' + U.FONT;
-      g.fillText('최고 ' + this.gd.bestScore, 16, 66);
+      g.fillText('최고 ' + this.gd.bestScore, 16, 100);
 
       g.textAlign = 'right';
       g.fillStyle = this.mult > 1 ? PAL.perfect : SEM.gray; g.font = '700 16px ' + U.FONT;
-      g.fillText('x' + this.mult, hub.W - 16, 32);
+      g.fillText('x' + this.mult, hub.W - 16, 66);
       g.fillStyle = SEM.gray; g.font = '500 11px ' + U.FONT;
-      g.fillText('연속 ' + this.streak, hub.W - 16, 48);
+      g.fillText('연속 ' + this.streak, hub.W - 16, 82);
       if (this.feverT > 0) {
         g.fillStyle = PAL.perfect; g.font = '700 12px ' + U.FONT;
-        g.fillText('피버 ' + this.feverT.toFixed(1) + 's', hub.W - 16, 66);
+        g.fillText('피버 ' + this.feverT.toFixed(1) + 's', hub.W - 16, 100);
       }
       g.textAlign = 'center'; g.textBaseline = 'middle';
     },

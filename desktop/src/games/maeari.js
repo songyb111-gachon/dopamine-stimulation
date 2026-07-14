@@ -384,14 +384,17 @@
     },
 
     _renderHUD(g) {
+      // NOTE: the hub renders its own achievement toast centered at (CX, 46) on
+      // top of every game (an integration screenshot caught our score text
+      // directly overlapping it) — our HUD must start clear of that band.
       const hub = this.hub, PAL = Theme.PAL, SEM = Theme.SEM;
       g.textAlign = 'center'; g.textBaseline = 'middle';
       g.fillStyle = PAL.ink; g.font = '800 22px ' + U.FONT;
-      g.fillText(this.score + '점', hub.CX, 30);
+      g.fillText(this.score + '점', hub.CX, 66);
       g.fillStyle = this.multiplier > 1 ? PAL.perfect : SEM.gray; g.font = '700 13px ' + U.FONT;
-      g.fillText('×' + this.multiplier + '  ·  ' + this.roundNumber + '라운드', hub.CX, 54);
+      g.fillText('×' + this.multiplier + '  ·  ' + this.roundNumber + '라운드', hub.CX, 90);
       const hint = this.phase === 'playback' ? '잘 보세요' : (this.phase === 'recall' ? '순서대로 탭하세요' : '');
-      if (hint) { g.fillStyle = SEM.gray; g.font = '500 12px ' + U.FONT; g.fillText(hint, hub.CX, 74); }
+      if (hint) { g.fillStyle = SEM.gray; g.font = '500 12px ' + U.FONT; g.fillText(hint, hub.CX, 110); }
       if (this.feverTimer > 0) {
         g.fillStyle = PAL.perfect; g.font = '800 14px ' + U.FONT;
         g.fillText('FEVER ' + this.feverTimer.toFixed(1) + 's', hub.CX, hub.H - 24);
