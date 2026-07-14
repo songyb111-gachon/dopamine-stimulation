@@ -47,28 +47,6 @@ window.Games = window.Games || {};
         nakha_runs_50: '낙하: 50판 플레이',
         nakha_fever_first: '낙하: 첫 피버',
       });
-      /* __TEMP_DEBUG_HOOK__ */
-      if (typeof location !== 'undefined' && location.search.indexOf('debug=1') >= 0) {
-        const self = this;
-        window.__DBG = {
-          get objects() { return self.objects; },
-          get score() { return self.score; },
-          get streak() { return self.streak; },
-          get mult() { return self.mult; },
-          get catches() { return self.catches; },
-          get phase() { return self.phase; },
-          get feverT() { return self.feverT; },
-          get catchCenterY() { return self.catchCenterY; },
-          forceSpawn(lane, kind, gold) {
-            self.objects = self.objects.filter(o => o.lane !== lane);
-            const speed = self.fallDistance / self.crossingTime(self.catches);
-            self.objects.push({ lane, y: self.spawnY, kind: kind || 'good', gold: !!gold, speed, r: self.objR });
-          },
-          setY(lane, y) { const o = self.objects.find(o => o.lane === lane); if (o) o.y = y; },
-          tap(lane) { self.handleTap(lane); },
-        };
-      }
-      /* __END_TEMP_DEBUG_HOOK__ */
     },
 
     onEnter() {
@@ -320,15 +298,20 @@ window.Games = window.Games || {};
       for (let l = 0; l < 3; l++) {
         const x0 = this.laneW * l + 4, w = this.laneW - 8;
         g.save();
+        // outer GOOD band: translucent cool fill + a visible cyan-family border of its own,
+        // so it reads as its own zone rather than disappearing behind the brighter perfect core.
         g.beginPath(); g.roundRect(x0, zTop, w, zBot - zTop, 8);
-        g.fillStyle = this.feverT > 0 ? 'rgba(255,201,64,0.14)' : 'rgba(57,197,232,0.10)';
+        g.fillStyle = this.feverT > 0 ? 'rgba(255,201,64,0.16)' : 'rgba(57,197,232,0.16)';
         g.fill();
+        g.lineWidth = 1.2; g.strokeStyle = this.feverT > 0 ? 'rgba(255,201,64,0.5)' : 'rgba(57,197,232,0.45)';
+        g.stroke();
+        // inner PERFECT sub-band: brighter/thicker gold core nested inside the good band.
         g.beginPath(); g.roundRect(x0, pTop, w, pBot - pTop, 5);
-        g.globalAlpha = 0.30; g.fillStyle = PAL.perfect; g.fill();
-        g.globalAlpha = 0.55; g.strokeStyle = PAL.perfect; g.lineWidth = 1.5; g.stroke();
+        g.globalAlpha = 0.42; g.fillStyle = PAL.perfect; g.fill();
+        g.globalAlpha = 0.85; g.strokeStyle = PAL.perfect; g.lineWidth = 2; g.stroke();
         g.globalAlpha = 1;
         g.beginPath(); g.moveTo(x0, this.catchCenterY); g.lineTo(x0 + w, this.catchCenterY);
-        g.strokeStyle = 'rgba(255,255,255,0.45)'; g.lineWidth = 1; g.stroke();
+        g.strokeStyle = 'rgba(255,255,255,0.55)'; g.lineWidth = 1; g.stroke();
         g.restore();
       }
 

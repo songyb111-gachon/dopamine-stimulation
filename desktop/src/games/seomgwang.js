@@ -397,7 +397,7 @@
         g.fillText('게임 오버', CX, CY - 130);
 
         g.fillStyle = PAL.ink; g.font = '800 34px ' + U.FONT;
-        U.drawTabular(g, '점수 ' + this.score, CX, CY - 84);
+        g.fillText('점수 ' + this.score, CX, CY - 84);
 
         if (this.isNewRecord) {
           g.fillStyle = PAL.perfect; g.font = '700 16px ' + U.FONT;
