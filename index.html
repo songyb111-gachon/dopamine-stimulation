@@ -1,0 +1,1028 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0A0E1A">
+<title>찰나 — 0.03초의 완벽을 쫓아라</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='44' fill='%230A0E1A' stroke='%2339C5E8' stroke-width='6'/><line x1='50' y1='50' x2='50' y2='12' stroke='%23FFC940' stroke-width='7' stroke-linecap='round'/></svg>">
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #0A0E1A;
+    overflow: hidden;
+    touch-action: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+  }
+  canvas { display: block; }
+  #safe-probe {
+    position: fixed; top: 0; right: 0; visibility: hidden; pointer-events: none;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="safe-probe"></div>
+<script>
+'use strict';
+
+/* ================================================================
+   찰나 (CHALNA) — one-tap timing game. Single file, zero deps.
+   All angles in degrees; 0° = 12 o'clock, clockwise positive.
+   ================================================================ */
+
+const TAU = Math.PI * 2;
+const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
+const lerp = (a, b, t) => a + (b - a) * t;
+const rand = (a, b) => a + Math.random() * (b - a);
+const norm360 = a => ((a % 360) + 360) % 360;
+// shortest signed difference a-b, in [-180, 180)
+const signedDelta = (a, b) => ((a - b + 540) % 360 + 360) % 360 - 180;
+const rad = d => (d - 90) * Math.PI / 180;          // to canvas radians
+const backOut = t => { const s = 1.70158; t -= 1; return t * t * ((s + 1) * t + s) + 1; };
+const easeOut = t => 1 - (1 - t) * (1 - t);
+
+const FONT = '-apple-system, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
+
+const COL = {
+  bg: '#0A0E1A', bgFever: '#2A0A2E',
+  needle: '#F5F7FA',
+  good: '#39C5E8', perfect: '#FFC940', gold: '#FFC940',
+  goodFx: '#5A8DEE', miss: '#FF5A5A', gray: '#8A93A6',
+  white: '#FFFFFF',
+};
+
+const S = {
+  title: '찰나',
+  tagline: '0.03초의 완벽을 쫓아라',
+  tapStart: '탭해서 시작',
+  tapRestart: '탭해서 다시 시작',
+  hint: '바늘이 금색 띠를 지날 때, 탭!',
+  perfect: '퍼펙트!',
+  streak: n => '퍼펙트 x' + n,
+  good: '굿',
+  plus: n => '+' + n,
+  foregone: n => '-' + n + ' 놓침',
+  nearPerfect: n => '퍼펙트까지 ' + n + 'ms!',
+  missLate: s => s + '초 늦었어요!',
+  missEarly: s => s + '초 빨랐어요!',
+  fever: '피버!',
+  goldHit: '골드 x3!',
+  milestone: n => n + '타!',
+  toBest: n => '최고까지 ' + n + '점',
+  newRecord: '신기록!',
+  lblScore: '점수', lblBest: '최고 점수',
+  lblBestStreak: '최고 연속 퍼펙트', lblLifetime: '누적 퍼펙트',
+  newFlare: 'NEW!',
+};
+
+/* ---------------- persistence ---------------- */
+const SAVE_KEY = 'chalna_save_v1';
+const save = { bestScore: 0, bestStreak: 0, lifetimePerfects: 0, totalRuns: 0 };
+function loadSave() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SAVE_KEY));
+    const num = v => (Number.isFinite(+v) && +v > 0) ? Math.floor(+v) : 0;
+    if (s && typeof s === 'object') {
+      save.bestScore = num(s.bestScore);
+      save.bestStreak = num(s.bestStreak);
+      save.lifetimePerfects = num(s.lifetimePerfects);
+      save.totalRuns = num(s.totalRuns);
+    }
+  } catch (e) { /* private mode → session-only records */ }
+}
+function writeSave() {
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {}
+}
+loadSave();
+
+/* ---------------- canvas ---------------- */
+const canvas = document.getElementById('c');
+const g = canvas.getContext('2d');
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+    if (typeof r === 'number') r = { tl: r, tr: r, br: r, bl: r };
+    this.moveTo(x + r.tl, y);
+    this.lineTo(x + w - r.tr, y);
+    this.arcTo(x + w, y, x + w, y + r.tr, r.tr);
+    this.lineTo(x + w, y + h - r.br);
+    this.arcTo(x + w, y + h, x + w - r.br, y + h, r.br);
+    this.lineTo(x + r.bl, y + h);
+    this.arcTo(x, y + h, x, y + h - r.bl, r.bl);
+    this.lineTo(x, y + r.tl);
+    this.arcTo(x, y, x + r.tl, y, r.tl);
+    return this;
+  };
+}
+let W = 0, H = 0, CX = 0, CY = 0, R = 0, DPR = 1;
+let safeTop = 0, safeRight = 0;
+let ambientGrad = null, vignetteGrad = null;
+function resize() {
+  DPR = clamp(window.devicePixelRatio || 1, 1, 3);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  CX = W / 2; CY = H / 2;
+  // spec radius, clamped so the HUD above the dial always has room
+  R = Math.max(80, Math.min(0.36 * Math.min(W, H), H / 2 - 150));
+  const probe = document.getElementById('safe-probe');
+  if (probe) {
+    const cs = getComputedStyle(probe);
+    safeTop = parseFloat(cs.paddingTop) || 0;
+    safeRight = parseFloat(cs.paddingRight) || 0;
+  }
+  ambientGrad = g.createRadialGradient(CX, CY, 0, CX, CY, Math.max(W, H) * 0.7);
+  ambientGrad.addColorStop(0, 'rgba(255,255,255,0.05)');
+  ambientGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  vignetteGrad = g.createRadialGradient(CX, CY, Math.min(W, H) * 0.35, CX, CY, Math.max(W, H) * 0.75);
+  vignetteGrad.addColorStop(0, 'rgba(0,0,0,0)');
+  vignetteGrad.addColorStop(1, 'rgba(0,0,0,1)');
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', resize);
+resize();
+
+/* ---------------- audio ---------------- */
+let AC = null, bus = null, master = null, delayWet = null, noiseBuf = null;
+let muted = false;
+function initAudio() {
+  if (AC) return;
+  try {
+    AC = new (window.AudioContext || window.webkitAudioContext)();
+    master = AC.createGain();
+    master.gain.value = muted ? 0 : 1;
+    master.connect(AC.destination);
+    const comp = AC.createDynamicsCompressor();
+    comp.connect(master);
+    bus = AC.createGain();
+    bus.connect(comp);
+    // fever echo: bus -> delay (fb 0.3) -> wet gain (0 normally) -> comp
+    const delay = AC.createDelay(0.5);
+    delay.delayTime.value = 0.16;
+    const fb = AC.createGain(); fb.gain.value = 0.3;
+    delay.connect(fb); fb.connect(delay);
+    delayWet = AC.createGain(); delayWet.gain.value = 0;
+    bus.connect(delay); delay.connect(delayWet); delayWet.connect(comp);
+    noiseBuf = AC.createBuffer(1, AC.sampleRate, AC.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  } catch (e) { AC = null; master = null; bus = null; delayWet = null; noiseBuf = null; }
+}
+function resumeAudio() { if (AC && AC.state !== 'running') AC.resume().catch(() => {}); }
+function setMuted(m) {
+  muted = m;
+  if (master) master.gain.setTargetAtTime(m ? 0 : 1, AC.currentTime, 0.01);
+}
+function tone(type, f0, f1, attack, dur, vol) {
+  if (!AC || muted) return;
+  const t0 = AC.currentTime;
+  const o = AC.createOscillator(), gn = AC.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(Math.max(20, f0), t0);
+  if (f1 && f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t0 + dur);
+  gn.gain.setValueAtTime(0.0001, t0);
+  gn.gain.linearRampToValueAtTime(vol, t0 + attack);
+  gn.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  o.connect(gn); gn.connect(bus);
+  o.start(t0); o.stop(t0 + dur + 0.05);
+}
+function noise(dur, vol, filterType, f0, f1) {
+  if (!AC || muted) return;
+  const t0 = AC.currentTime;
+  const src = AC.createBufferSource();
+  src.buffer = noiseBuf;
+  src.loop = true;
+  src.playbackRate.value = 1;
+  const fl = AC.createBiquadFilter();
+  fl.type = filterType || 'bandpass';
+  fl.frequency.setValueAtTime(f0 || 2000, t0);
+  if (f1) fl.frequency.exponentialRampToValueAtTime(f1, t0 + dur);
+  fl.Q.value = 1;
+  const gn = AC.createGain();
+  gn.gain.setValueAtTime(0.0001, t0);
+  gn.gain.linearRampToValueAtTime(vol, t0 + 0.005);
+  gn.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  src.connect(fl); fl.connect(gn); gn.connect(bus);
+  src.start(t0); src.stop(t0 + dur + 0.05);
+}
+const sPerfect = (streak, gold) => {
+  const semis = Math.min(streak, 24);                 // C5 + 1 semitone/streak, cap C7
+  const f = 523.25 * Math.pow(2, semis / 12);
+  tone('sine', f, 0, 0.008, 0.2, 0.26);
+  tone('triangle', f, 0, 0.008, 0.2, 0.12);
+  if (streak > 0 && streak % 5 === 0) tone('sine', f * 1.5, 0, 0.008, 0.2, 0.26 * 0.158); // −16dB fifth
+  noise(0.03, 0.15, 'highpass', 3000, 0);
+  if (gold) { tone('sine', f * 2, 0, 0.008, 0.25, 0.12); tone('sine', 1320, 0, 0.005, 0.3, 0.08); }
+};
+const sGood = () => { tone('square', 150, 0, 0.005, 0.08, 0.18); noise(0.04, 0.06, 'lowpass', 300, 0); };
+const sMiss = () => {
+  tone('sawtooth', 400, 80, 0.005, 0.5, 0.22);
+  tone('sawtooth', 406, 82, 0.005, 0.5, 0.12);
+  noise(0.3, 0.15, 'lowpass', 200, 0);
+};
+const sClick = () => noise(0.02, 0.079, 'bandpass', 4000, 0);   // −22dB tension tick
+const sFever = () => { tone('sine', 160, 60, 0.01, 0.4, 0.35); noise(0.3, 0.12, 'bandpass', 400, 4000); };
+const sMilestone = () => { tone('square', 110, 0, 0.01, 0.3, 0.14); tone('square', 165, 0, 0.01, 0.3, 0.10); };
+const sBlip = i => tone('sine', 600 + i * 28, 0, 0.004, 0.045, 0.07);
+const sShimmer = () => { tone('sine', 1567, 0, 0.01, 0.3, 0.09); tone('sine', 1568, 0, 0.01, 0.3, 0.09); tone('sine', 2093, 0, 0.01, 0.25, 0.06); };
+const sHeartbeat = () => { tone('sine', 55, 0, 0.01, 0.09, 0.16); setTimeout(() => tone('sine', 55, 0, 0.01, 0.09, 0.12), 100); };
+const buzz = ms => { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {} };
+
+/* ---------------- effects entities ---------------- */
+const POOL_N = 300;
+const pool = [];
+for (let i = 0; i < POOL_N; i++) pool.push({ on: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, max: 1, size: 2, color: '#fff', kind: 0, rot: 0, vr: 0 });
+function spawnP(x, y, vx, vy, life, size, color, kind) {
+  for (let i = 0; i < POOL_N; i++) {
+    const p = pool[i];
+    if (!p.on) {
+      p.on = true; p.x = x; p.y = y; p.vx = vx; p.vy = vy;
+      p.life = life; p.max = life; p.size = size; p.color = color;
+      p.kind = kind || 0; p.rot = rand(0, TAU); p.vr = rand(-6, 6);
+      return;
+    }
+  }
+}
+function burst(x, y, n, color, speed, kind) {
+  for (let i = 0; i < n; i++) {
+    const a = rand(0, TAU), v = rand(speed * 0.35, speed);
+    spawnP(x, y, Math.cos(a) * v, Math.sin(a) * v, rand(0.4, kind === 1 ? 1.2 : 0.6), rand(2, kind === 1 ? 6 : 4), color, kind);
+  }
+}
+let pops = [];      // floating text  {text,x,y,life,max,size,color,vy,punch}
+let banners = [];   // sliding banner {text,color,t,dur,size}
+let stamps = [];    // center stamp   {text,color,t,dur,size}
+let waves = [];     // shockwave ring {t}
+let frags = [];     // arc fragments  {a0,span,r,vr,va,t}
+let flashes = [];   // arc edge flash {ang,t}
+function popup(text, x, y, size, color, punch) {
+  pops.push({ text, x, y, life: 0.8, max: 0.8, size, color, vy: -66, punch: punch || 0 });
+}
+
+/* ---------------- game state ---------------- */
+const ST_TITLE = 0, ST_PLAY = 1, ST_DYING = 2, ST_OVER = 3;
+let state = ST_TITLE;
+let paused = false;
+
+let needle = 0, dir = 1;
+let arc = null;               // {center, w, p, gold, dist0}
+let lastGold = false;
+let travelSinceSpawn = 0;
+let hits = 0, score = 0, streak = 0;
+let runMaxStreak = 0, runPerfects = 0;
+let startBest = 0, startBestStreak = 0;
+let recordBroken = false, scoreGold = false;
+let fever = false, feverT = 0, feverMix = 0;
+let hitStop = 0, shakeT = 0, shakeMag = 0;
+let pulsePhase = 0, clickAcc = 0;
+let nearMsgCd = 0, hbTimer = 0, hbOn = false;
+let grace = 0, speedEase = 1;
+let streakPunchT = 0, streakDeflateT = 0;
+let inputLockUntil = 0;
+let trail = [];
+
+// dying / gameover
+let dieT = 0, ghostAngle = 0, missSecs = 0, missLate = false, missArcGold = false, missEdgeMs = 0;
+let panelT = 0, countT = 0, countDone = false, shownScore = 0, lastBlip = -1;
+let tauntText = '', newBest = false, newBestStreak = false, confettiFired = false;
+
+let lastNow = performance.now();
+let timeScale = 1;
+
+const mult = st => st >= 15 ? 5 : st >= 10 ? 4 : st >= 6 ? 3 : st >= 3 ? 2 : 1;
+const omega = n => Math.min(200 + 7 * Math.max(0, n - 3), 460);            // °/s
+const goodW = n => Math.max(42 - 0.5 * Math.max(0, n - 3), omega(n) * 0.070);
+const perfW = n => Math.max(goodW(n) * 0.28, omega(n) * 0.030);
+const effPerfW = () => arc.p * (fever ? 1.2 : 1);
+
+function spawnArc() {
+  const n = hits;
+  let gold = false;
+  if (n >= 10 && !lastGold && Math.random() < 1 / 8) gold = true;
+  lastGold = gold;
+  const dist0 = rand(100, 260);
+  arc = { center: norm360(needle + dir * dist0), w: goodW(n), p: perfW(n), gold, dist0 };
+  travelSinceSpawn = 0;
+}
+
+function startRun() {
+  state = ST_PLAY;
+  score = 0; hits = 0; streak = 0; runMaxStreak = 0; runPerfects = 0;
+  startBest = save.bestScore; startBestStreak = save.bestStreak;
+  recordBroken = false; scoreGold = false;
+  fever = false; feverT = 0; feverMix = 0;
+  hitStop = 0; shakeT = 0; pulsePhase = 0; clickAcc = 0;
+  nearMsgCd = 0; hbTimer = 0; hbOn = false;
+  grace = 0; speedEase = 1; lastGold = false;
+  streakPunchT = 0; streakDeflateT = 0;
+  dir = Math.random() < 0.5 ? 1 : -1;
+  trail = []; pops = []; banners = []; stamps = []; waves = []; frags = []; flashes = [];
+  for (let i = 0; i < POOL_N; i++) pool[i].on = false;
+  spawnArc();
+}
+
+/* tip of the needle in screen space */
+const tipX = a => CX + Math.cos(rad(a)) * R;
+const tipY = a => CY + Math.sin(rad(a)) * R;
+
+function checkRecord() {
+  if (!recordBroken && startBest > 0 && score > startBest) {
+    recordBroken = true; scoreGold = true;
+    save.bestScore = score; writeSave();
+    banners.push({ text: S.newRecord, color: COL.gold, t: 0, dur: 1.6, size: 34 });
+    sShimmer();
+    for (let i = 0; i < 40; i++) burst(CX, CY - R - 20, 1, COL.gold, 260, 1);
+  } else if (recordBroken && score > save.bestScore) {
+    save.bestScore = score; writeSave();
+  } else if (startBest === 0 && score > save.bestScore) {
+    save.bestScore = score; writeSave();   // first run: silent live update, no banner
+  }
+}
+
+function startFever() {
+  fever = true; feverT = 6;
+  if (delayWet && AC) delayWet.gain.setTargetAtTime(0.35, AC.currentTime, 0.05);
+  sFever();
+  stamps.push({ text: S.fever, color: '#FF6AD5', t: 0, dur: 1.0, size: 64 });
+}
+function endFever() {
+  fever = false;
+  if (delayWet && AC) delayWet.gain.setTargetAtTime(0, AC.currentTime, 0.1);
+}
+
+function afterHit() {
+  hits++;
+  if (hits % 10 === 0) {
+    score += 50;
+    banners.push({ text: S.milestone(hits), color: COL.white, t: 0, dur: 1.1, size: 30 });
+    popup(S.plus(50), CX, CY - R * 0.45, 22, COL.white, 0);
+    sMilestone();
+  }
+  checkRecord();
+  dir = -dir;
+  spawnArc();
+}
+
+function doPerfect(absD) {
+  const gold = arc.gold;
+  const pts = 25 * mult(streak) * (fever ? 2 : 1) * (gold ? 3 : 1);
+  score += pts;
+  streak++;
+  streakPunchT = 0.15;
+  runMaxStreak = Math.max(runMaxStreak, streak);
+  runPerfects++; save.lifetimePerfects++;
+  // juice
+  hitStop = 0.04; shakeT = 0.12; shakeMag = 12;
+  const tx = tipX(needle), ty = tipY(needle);
+  burst(tx, ty, 24, COL.gold, 340, 0);
+  waves.push({ t: 0 });
+  for (let i = 0; i < 3; i++)
+    frags.push({ a0: arc.center - arc.w / 2 + (i * arc.w) / 3, span: arc.w / 3, r: R, vr: rand(40, 120), va: rand(-90, 90), t: 0 });
+  popup(S.plus(pts), tx, ty - 26, 26, gold ? COL.gold : COL.white, 1);
+  popup(S.perfect, CX, CY - R * 0.15, 32, COL.gold, 1);
+  if (gold) popup(S.goldHit, CX, CY - R * 0.30, 30, COL.gold, 1);
+  sPerfect(streak, gold);
+  buzz(10);
+  if (streak % 8 === 0) startFever();
+  afterHit();
+}
+
+function doGood(absD) {
+  const prevStreak = streak;
+  const pre = mult(streak);
+  const pts = 10 * pre * (fever ? 2 : 1);
+  const perfectWouldPay = 25 * pre * (fever ? 2 : 1) * (arc.gold ? 3 : 1);
+  const w = omega(hits) * Math.max(speedEase, 0.01);
+  const msToPerf = (absD - effPerfW() / 2) / w * 1000;
+  score += pts;
+  streak = 0;
+  if (prevStreak > 0) streakDeflateT = 0.12;
+  const tx = tipX(needle), ty = tipY(needle);
+  burst(tx, ty, 8, COL.goodFx, 180, 0);
+  popup(S.good, tx, ty - 44, 18, COL.goodFx, 0);
+  popup(S.plus(pts), tx, ty - 22, 20, COL.goodFx, 0);
+  pops.push({ text: S.foregone(perfectWouldPay), x: tx, y: ty + 6, life: 0.8, max: 0.8, size: 15, color: COL.gray, vy: -30, punch: 0 });
+  if (msToPerf <= 15 && nearMsgCd <= 0) {
+    popup(S.nearPerfect(Math.max(1, Math.round(msToPerf))), CX, CY - R * 0.55, 24, '#FFE9AF', 1);
+    nearMsgCd = 3;
+  }
+  sGood();
+  afterHit();
+}
+
+function pickTaunt(missEdge) {
+  if (hits % 10 === 9) return '한 타만 더 하면 ' + (hits + 1) + '타였는데...';
+  if (streak >= 6 && streak < 8) return '피버 직전이었는데!';
+  if (missEdge <= 20) return '한 끗 차이... 겨우 ' + Math.max(1, Math.round(missEdge)) + 'ms!';
+  if (missArcGold) return '골드 욕심이 과했나?';
+  if (startBest > 0 && score < startBest && score >= 0.9 * startBest)
+    return '최고 기록까지 단 ' + (startBest - score) + '점!';
+  if (streak >= 10) return '연속 퍼펙트 ' + streak + '에서... 아깝다!';
+  if (hits < 5) return '워밍업은 끝났죠?';
+  return '다시 하면 넘길 수 있어요';
+}
+
+function doMiss(signedOffset) {
+  const w = omega(hits) * Math.max(speedEase, 0.01);
+  missSecs = Math.abs(signedOffset) / w;
+  missLate = signedOffset > 0;
+  missArcGold = arc.gold;
+  missEdgeMs = (Math.abs(signedOffset) - arc.w / 2) / w * 1000;
+  ghostAngle = needle;
+  if (Math.abs(signedOffset) <= 1.5 * arc.w)
+    flashes.push({ ang: arc.center + dir * Math.sign(signedOffset || 1) * arc.w / 2, t: 0 });
+  endFever();
+  sMiss(); buzz(20);
+  // finalize records at death
+  newBest = score > startBest;
+  newBestStreak = runMaxStreak > startBestStreak;
+  save.bestScore = Math.max(save.bestScore, score);
+  save.bestStreak = Math.max(save.bestStreak, runMaxStreak);
+  save.totalRuns++;
+  writeSave();
+  tauntText = pickTaunt(missEdgeMs);
+  state = ST_DYING; dieT = 0;
+}
+
+/* ---------------- input ---------------- */
+const muteRect = () => ({ x: W - 48 - safeRight, y: 12 + safeTop, w: 36, h: 36 });
+function inMute(x, y) { const r = muteRect(); return x >= r.x - 6 && x <= r.x + r.w + 6 && y >= r.y - 6 && y <= r.y + r.h + 6; }
+
+function judge() {
+  const t = performance.now();
+  const el = clamp((t - lastNow) / 1000, 0, 0.05);
+  const advance = dir * omega(hits) * speedEase * timeScale * el;
+  needle = norm360(needle + advance);
+  travelSinceSpawn += Math.abs(advance);
+  lastNow = t;
+  const P = effPerfW();
+  const dRaw = signedDelta(needle, arc.center);
+  const absD = Math.abs(dRaw);
+  if (absD <= P / 2) doPerfect(absD);
+  else if (absD <= arc.w / 2) doGood(absD);
+  else doMiss(travelSinceSpawn - arc.dist0);
+}
+
+function onInput(x, y, fromPointer) {
+  initAudio(); resumeAudio();
+  if (fromPointer && inMute(x, y)) { setMuted(!muted); return; }
+  if (paused || grace > 0) return;
+  const now = performance.now();
+  if (now < inputLockUntil) return;
+  if (state === ST_TITLE) { startRun(); inputLockUntil = now + 50; return; }
+  if (state === ST_PLAY) { judge(); inputLockUntil = now + 50; return; }
+  if (state === ST_OVER) {
+    if (panelT < 0.4) return;                 // 400ms lockout
+    if (!countDone) { countDone = true; shownScore = score; inputLockUntil = now + 50; return; }  // 1st tap: skip count-up
+    startRun(); inputLockUntil = now + 50;
+  }
+}
+window.addEventListener('pointerdown', e => {
+  if (!e.isPrimary || e.button !== 0) return;   // ignore extra fingers / right-click
+  e.preventDefault();
+  onInput(e.clientX, e.clientY, true);
+}, { passive: false });
+window.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
+window.addEventListener('keydown', e => {
+  if (e.repeat) return;
+  if (e.key === 'm' || e.key === 'M') { initAudio(); setMuted(!muted); return; }
+  if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); onInput(0, 0, false); }
+});
+window.addEventListener('contextmenu', e => e.preventDefault());
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    paused = true;
+    if (AC && AC.state === 'running') AC.suspend().catch(() => {});
+    writeSave();
+  } else {
+    paused = false;
+    lastNow = performance.now();
+    resumeAudio();
+    if (state === ST_PLAY) { grace = 0.5; speedEase = 0; }
+  }
+});
+
+/* ---------------- update ---------------- */
+function update(dt) {
+  // real-time timers
+  if (hitStop > 0) hitStop -= dt;
+  timeScale = hitStop > 0 ? 0 : (state === ST_DYING ? 0.25 : 1);
+  const sdt = dt * timeScale;
+
+  if (nearMsgCd > 0) nearMsgCd -= dt;
+  if (shakeT > 0) shakeT -= dt;
+  if (streakPunchT > 0) streakPunchT -= dt;
+  if (streakDeflateT > 0) streakDeflateT -= dt;
+  feverMix += ((fever ? 1 : 0) - feverMix) * Math.min(1, dt * 8);
+
+  if (state === ST_TITLE) {
+    needle = norm360(needle + 40 * dt);
+  } else if (state === ST_PLAY) {
+    if (grace > 0) {
+      grace -= dt;               // needle holds still, input ignored
+    } else {
+      if (speedEase < 1) speedEase = Math.min(1, speedEase + dt / 0.3);
+      const advance = dir * omega(hits) * speedEase * sdt;
+      needle = norm360(needle + advance);
+      travelSinceSpawn += Math.abs(advance);
+    }
+    // fever timer (frozen during the post-refocus grace window)
+    if (fever && grace <= 0) { feverT -= sdt; if (feverT <= 0) endFever(); }
+    // anticipation: pulse + click accelerando driven by time-to-arrival
+    const distAhead = norm360((arc.center - needle) * dir);
+    const tta = Math.max(0.001, distAhead / (omega(hits) * Math.max(speedEase, 0.01)));
+    pulsePhase += clamp(1 / tta, 1, 12) * sdt * TAU;
+    if (grace <= 0 && timeScale > 0) {
+      clickAcc += clamp(1 / tta, 2, 16) * sdt;
+      if (clickAcc >= 1) { clickAcc -= 1; sClick(); }
+    }
+    // fever needle trail
+    if (fever) { trail.unshift(needle); if (trail.length > 10) trail.pop(); }
+    else if (trail.length) trail.pop();
+    // heartbeat near record
+    hbOn = startBest > 0 && !recordBroken && score >= 0.85 * startBest;
+    if (hbOn) { hbTimer += dt; if (hbTimer >= 0.6) { hbTimer -= 0.6; sHeartbeat(); } }
+  } else if (state === ST_DYING) {
+    dieT += dt;
+    needle = norm360(needle + dir * omega(hits) * sdt);   // slow-mo drift
+    if (dieT >= 0.6) {
+      state = ST_OVER; panelT = 0; countT = 0; countDone = false;
+      shownScore = 0; lastBlip = -1; confettiFired = false;
+    }
+  } else if (state === ST_OVER) {
+    panelT += dt;
+    if (!countDone) {
+      countT += dt;
+      const f = easeOut(clamp(countT / 0.7, 0, 1));
+      shownScore = Math.round(score * f);
+      const blipIdx = Math.floor(countT / 0.06);
+      if (blipIdx !== lastBlip && panelT > 0.25 && shownScore > 0) { lastBlip = blipIdx; sBlip(blipIdx); }
+      if (countT >= 0.7) { countDone = true; shownScore = score; }
+    }
+    if (countDone && !confettiFired) {
+      confettiFired = true;
+      if (newBest || newBestStreak) {
+        for (let i = 0; i < 40; i++)
+          spawnP(rand(CX - 140, CX + 140), H - Math.min(420, H * 0.62) + 20, rand(-80, 80), rand(-320, -120), rand(0.8, 1.4), rand(3, 6), Math.random() < 0.5 ? COL.gold : COL.white, 1);
+      }
+    }
+  }
+
+  // entities (world-time so hit-stop freezes them, dying slow-mos them)
+  const edt = state === ST_OVER ? dt : sdt;
+  for (let i = 0; i < POOL_N; i++) {
+    const p = pool[i];
+    if (!p.on) continue;
+    p.life -= edt;
+    if (p.life <= 0) { p.on = false; continue; }
+    p.x += p.vx * edt; p.y += p.vy * edt;
+    p.vy += (p.kind === 1 ? 420 : 200) * edt;
+    p.rot += p.vr * edt;
+  }
+  compact(waves, wv => (wv.t += edt) < 0.3);
+  compact(frags, fr => { fr.t += edt; fr.r += fr.vr * edt; fr.a0 += fr.va * edt; return fr.t < 0.5; });
+  compact(flashes, fl => (fl.t += dt) < 0.5);
+  compact(pops, p => { p.life -= dt; p.y += p.vy * dt; return p.life > 0; });
+  compact(banners, b => (b.t += dt) < b.dur);
+  compact(stamps, s2 => (s2.t += dt) < s2.dur);
+}
+function compact(arr, keepFn) {
+  let w = 0;
+  for (let i = 0; i < arr.length; i++) if (keepFn(arr[i])) arr[w++] = arr[i];
+  arr.length = w;
+}
+
+/* ---------------- rendering ---------------- */
+function mix(hex1, hex2, t) {
+  const h = s => [parseInt(s.slice(1, 3), 16), parseInt(s.slice(3, 5), 16), parseInt(s.slice(5, 7), 16)];
+  const a = h(hex1), b = h(hex2);
+  return 'rgb(' + Math.round(lerp(a[0], b[0], t)) + ',' + Math.round(lerp(a[1], b[1], t)) + ',' + Math.round(lerp(a[2], b[2], t)) + ')';
+}
+const digitWidthCache = {};
+function drawTabular(text, x, y) {   // fixed-advance digits: score never jitters
+  let dw = digitWidthCache[g.font];
+  if (dw === undefined) { dw = g.measureText('0').width; digitWidthCache[g.font] = dw; }
+  const total = text.length * dw;
+  let cx0 = x - total / 2;
+  const prev = g.textAlign; g.textAlign = 'center';
+  for (const ch of text) { g.fillText(ch, cx0 + dw / 2, y); cx0 += dw; }
+  g.textAlign = prev;
+}
+function arcStroke(center, width, radius, lw, style, blur, blurColor) {
+  g.beginPath();
+  g.arc(CX, CY, radius, rad(center - width / 2), rad(center + width / 2));
+  g.lineWidth = lw; g.strokeStyle = style;
+  if (blur) { g.shadowBlur = blur; g.shadowColor = blurColor || style; }
+  g.stroke();
+  g.shadowBlur = 0;
+}
+
+function render(now) {
+  g.setTransform(DPR, 0, 0, DPR, 0, 0);
+  // screen shake
+  if (shakeT > 0) {
+    const m = shakeMag * (shakeT / 0.12) * (shakeT / 0.12);
+    g.translate(rand(-m, m), rand(-m, m));
+  }
+  // background
+  const bg = mix(COL.bg, COL.bgFever, feverMix);
+  g.fillStyle = bg;
+  g.fillRect(-20, -20, W + 40, H + 40);
+  g.fillStyle = ambientGrad;
+  g.fillRect(-20, -20, W + 40, H + 40);
+  // heartbeat vignette
+  if (hbOn && state === ST_PLAY) {
+    const pulse = 0.10 + 0.06 * Math.max(0, Math.sin(hbTimer / 0.6 * TAU));
+    g.globalAlpha = pulse;
+    g.fillStyle = vignetteGrad;
+    g.fillRect(-20, -20, W + 40, H + 40);
+    g.globalAlpha = 1;
+  }
+
+  const inGame = state !== ST_TITLE;
+
+  // outer progress ring toward best (suppressed on first-ever run)
+  if (inGame && startBest > 0) {
+    arcStroke(180, 360, R + 16, 4, 'rgba(255,255,255,0.07)');
+    const frac = clamp(score / startBest, 0, 1);
+    if (frac > 0)
+      arcStroke(frac * 180, frac * 360, R + 16, 4, recordBroken ? COL.gold : 'rgba(245,247,250,0.55)', recordBroken ? 8 : 0);
+    // gold notch at 12 o'clock = best
+    g.save();
+    g.strokeStyle = COL.gold; g.lineWidth = 3;
+    g.beginPath(); g.moveTo(CX, CY - R - 24); g.lineTo(CX, CY - R - 8); g.stroke();
+    g.restore();
+  }
+
+  // dial rim
+  g.beginPath();
+  g.arc(CX, CY, R, 0, TAU);
+  g.lineWidth = 2;
+  g.strokeStyle = 'rgba(245,247,250,0.12)';
+  g.stroke();
+  g.beginPath(); g.arc(CX, CY, 4, 0, TAU); g.fillStyle = 'rgba(245,247,250,0.5)'; g.fill();
+
+  // fever timer ring
+  if (fever) {
+    const ff = clamp(feverT / 6, 0, 1);
+    arcStroke(ff * 180, ff * 360, R - 12, 3, '#FF6AD5', 6);
+  }
+
+  // target arc
+  if (state === ST_PLAY || state === ST_DYING) {
+    const lw = Math.max(14, R * 0.10);
+    const goodCol = arc.gold ? COL.gold : COL.good;
+    arcStroke(arc.center, arc.w, R, lw, goodCol, 14, goodCol);
+    // perfect band with tension pulse
+    const P = effPerfW();
+    const pb = 0.72 + 0.28 * Math.sin(pulsePhase);
+    g.globalAlpha = state === ST_DYING ? 0.6 : pb;
+    arcStroke(arc.center, P, R, lw + 6, arc.gold ? '#FFF3C4' : COL.perfect, 18, COL.perfect);
+    g.globalAlpha = 1;
+    // gold sparkle shimmer
+    if (arc.gold) {
+      const t = now / 1000;
+      for (let i = 0; i < 5; i++) {
+        const sa = arc.center - arc.w / 2 + ((t * 26 + i * 41) % arc.w);
+        const al = 0.4 + 0.6 * Math.abs(Math.sin(t * 5 + i * 1.7));
+        g.globalAlpha = al;
+        g.fillStyle = '#FFFFFF';
+        g.beginPath();
+        g.arc(CX + Math.cos(rad(sa)) * R, CY + Math.sin(rad(sa)) * R, 1.8, 0, TAU);
+        g.fill();
+      }
+      g.globalAlpha = 1;
+    }
+  }
+
+  // arc fragments (shatter)
+  if (frags.length) {
+    g.save();
+    for (const fr of frags) {
+      g.globalAlpha = 1 - fr.t / 0.5;
+      g.beginPath();
+      g.arc(CX, CY, fr.r, rad(fr.a0), rad(fr.a0 + fr.span));
+      g.lineWidth = 8; g.strokeStyle = COL.perfect;
+      g.stroke();
+    }
+    g.restore(); g.globalAlpha = 1;
+  }
+
+  // missed-edge flash
+  for (const fl of flashes) {
+    g.globalAlpha = (1 - fl.t / 0.5) * (Math.floor(fl.t * 12) % 2 === 0 ? 1 : 0.3);
+    arcStroke(fl.ang, 4, R, Math.max(18, R * 0.12), '#FFFFFF', 16);
+    g.globalAlpha = 1;
+  }
+
+  // shockwaves
+  for (const wv of waves) {
+    const f = wv.t / 0.3;
+    g.globalAlpha = 1 - f;
+    g.beginPath();
+    g.arc(CX, CY, R * (0.2 + 1.2 * f), 0, TAU);
+    g.lineWidth = 3 * (1 - f) + 1;
+    g.strokeStyle = '#FFFFFF';
+    g.stroke();
+    g.globalAlpha = 1;
+  }
+
+  // fever trail
+  if (trail.length > 1) {
+    g.save();
+    g.globalCompositeOperation = 'lighter';
+    for (let i = 1; i < trail.length; i++) {
+      g.globalAlpha = 0.35 * (1 - i / trail.length);
+      g.beginPath();
+      g.moveTo(CX, CY);
+      g.lineTo(tipX(trail[i]), tipY(trail[i]));
+      g.lineWidth = 2.5;
+      g.strokeStyle = '#FF6AD5';
+      g.stroke();
+    }
+    g.restore(); g.globalAlpha = 1;
+  }
+
+  // needle (+ghost when dying)
+  const drawNeedle = (ang, alpha, color) => {
+    g.save();
+    g.globalAlpha = alpha;
+    g.strokeStyle = color; g.lineWidth = 3; g.lineCap = 'round';
+    g.shadowBlur = 12; g.shadowColor = color;
+    g.beginPath(); g.moveTo(CX, CY); g.lineTo(tipX(ang), tipY(ang)); g.stroke();
+    g.restore();
+  };
+  if (state === ST_DYING) {
+    drawNeedle(needle, 0.6, COL.needle);
+    if (Math.floor(dieT * 4) % 2 === 0) drawNeedle(ghostAngle, 0.4, COL.miss);
+  } else if (state !== ST_OVER) {
+    drawNeedle(needle, 1, COL.needle);
+  }
+
+  // particles
+  g.save();
+  for (const p of pool) {
+    if (!p.on) continue;
+    const f = p.life / p.max;
+    g.globalAlpha = f;
+    if (p.kind === 1) {          // confetti quad
+      g.save();
+      g.translate(p.x, p.y); g.rotate(p.rot);
+      g.fillStyle = p.color;
+      g.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+      g.restore();
+    } else {                     // additive spark
+      g.globalCompositeOperation = 'lighter';
+      g.fillStyle = p.color;
+      g.beginPath(); g.arc(p.x, p.y, p.size * f, 0, TAU); g.fill();
+      g.globalCompositeOperation = 'source-over';
+    }
+  }
+  g.restore(); g.globalAlpha = 1;
+
+  // floating popups
+  for (const p of pops) {
+    const f = p.life / p.max;
+    let sc = 1;
+    if (p.punch) { const pt = 1 - f; sc = pt < 0.15 ? 1 + 0.3 * Math.sin(pt / 0.15 * Math.PI) : 1; }
+    g.globalAlpha = Math.min(1, f * 2);
+    g.fillStyle = p.color;
+    g.font = '700 ' + Math.round(p.size * sc) + 'px ' + FONT;
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(p.text, p.x, p.y);
+  }
+  g.globalAlpha = 1;
+
+  // banners (slide in from left with back-ease)
+  for (const b of banners) {
+    const f = clamp(b.t / 0.3, 0, 1);
+    const x = lerp(-260, CX, backOut(f));
+    const fade = b.t > b.dur - 0.3 ? (b.dur - b.t) / 0.3 : 1;
+    g.globalAlpha = fade;
+    g.font = '800 ' + b.size + 'px ' + FONT;
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.shadowBlur = 16; g.shadowColor = b.color;
+    g.fillStyle = b.color;
+    g.fillText(b.text, x, CY - R - 46);
+    g.shadowBlur = 0;
+  }
+  g.globalAlpha = 1;
+
+  // center stamps (피버!)
+  for (const s2 of stamps) {
+    const f = clamp(s2.t / 0.25, 0, 1);
+    const sc = lerp(2.2, 1, backOut(f));
+    const fade = s2.t > s2.dur - 0.3 ? (s2.dur - s2.t) / 0.3 : 1;
+    g.globalAlpha = 0.9 * fade;
+    g.font = '900 ' + Math.round(s2.size * sc) + 'px ' + FONT;
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.shadowBlur = 24; g.shadowColor = s2.color;
+    g.fillStyle = s2.color;
+    g.fillText(s2.text, CX, CY);
+    g.shadowBlur = 0;
+  }
+  g.globalAlpha = 1;
+
+  if (state === ST_TITLE) renderTitle(now);
+  if (inGame) renderHUD();
+  if (state === ST_DYING) renderDying();
+  if (state === ST_OVER) renderPanel(now);
+
+  renderMute();
+}
+
+function renderTitle(now) {
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = COL.needle;
+  g.font = '900 ' + Math.round(Math.min(96, W * 0.2)) + 'px ' + FONT;
+  g.shadowBlur = 30; g.shadowColor = COL.good;
+  g.fillText(S.title, CX, CY - R * 0.42);
+  g.shadowBlur = 0;
+  g.font = '400 17px ' + FONT;
+  g.fillStyle = COL.gray;
+  g.fillText(S.tagline, CX, CY - R * 0.42 + Math.min(96, W * 0.2) * 0.62);
+  // records
+  g.font = '500 15px ' + FONT;
+  g.fillStyle = 'rgba(245,247,250,0.75)';
+  const ry = CY + R * 0.28;
+  g.fillText(S.lblBest + '  ' + save.bestScore, CX, ry);
+  g.fillText(S.lblBestStreak + '  ' + save.bestStreak, CX, ry + 24);
+  g.fillText(S.lblLifetime + '  ' + save.lifetimePerfects, CX, ry + 48);
+  if (save.totalRuns === 0) {
+    g.fillStyle = COL.perfect;
+    g.font = '600 16px ' + FONT;
+    g.fillText(S.hint, CX, ry + 84);
+  }
+  const pulse = 0.55 + 0.45 * Math.sin(now / 400);
+  g.globalAlpha = pulse;
+  g.fillStyle = COL.needle;
+  g.font = '700 20px ' + FONT;
+  g.fillText(S.tapStart, CX, H - Math.max(48, H * 0.08));
+  g.globalAlpha = 1;
+}
+
+function renderHUD() {
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  // score
+  g.fillStyle = scoreGold ? COL.gold : COL.needle;
+  g.font = '800 48px ' + FONT;
+  if (scoreGold) { g.shadowBlur = 14; g.shadowColor = COL.gold; }
+  drawTabular(String(score), CX, 58);
+  g.shadowBlur = 0;
+  // multiplier chip
+  const m = mult(streak);
+  if (state === ST_PLAY || state === ST_DYING) {
+    let chipScale = 1;
+    if (streakDeflateT > 0) chipScale = lerp(1.3, 1, easeOut(1 - streakDeflateT / 0.12));
+    const chipX = CX + 30 + String(score).length * 14 + 26;
+    g.save();
+    g.translate(chipX, 58); g.scale(chipScale, chipScale); g.translate(-chipX, -58);
+    g.fillStyle = m > 1 ? COL.perfect : 'rgba(245,247,250,0.25)';
+    g.beginPath();
+    const cw = 46, ch = 26;
+    g.roundRect(chipX - cw / 2, 58 - ch / 2, cw, ch, 13);
+    g.fill();
+    g.fillStyle = m > 1 ? '#1A1408' : COL.gray;
+    g.font = '800 16px ' + FONT;
+    g.fillText('x' + m, chipX, 59);
+    g.restore();
+  }
+  // streak line (grows with streak, scale-punches on each perfect)
+  if (streak > 0) {
+    let scale = 1;
+    if (streakPunchT > 0) scale = 1 + 0.3 * Math.sin((1 - streakPunchT / 0.15) * Math.PI);
+    g.save();
+    g.translate(CX, 96); g.scale(scale, scale);
+    g.fillStyle = COL.perfect;
+    g.font = '700 ' + Math.min(24 + streak, 40) + 'px ' + FONT;
+    g.fillText(S.streak(streak), 0, 0);
+    g.restore();
+  }
+  // record proximity
+  if (hbOn && state === ST_PLAY) {
+    g.fillStyle = COL.gold;
+    g.font = '600 15px ' + FONT;
+    g.fillText(S.toBest(startBest - score), CX, streak > 0 ? 124 : 96);
+  }
+}
+
+function renderDying() {
+  const f = clamp(dieT / 0.6, 0, 1);
+  g.fillStyle = 'rgba(90,96,110,' + (0.55 * f).toFixed(3) + ')';
+  g.fillRect(-20, -20, W + 40, H + 40);
+  // delta text punches in at 3x then settles with overshoot
+  const tf = clamp(dieT / 0.35, 0, 1);
+  const sc = lerp(3, 1, backOut(tf));
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = COL.miss;
+  g.font = '900 ' + Math.round(Math.min(40, W * 0.09) * sc) + 'px ' + FONT;
+  const msg = (missLate ? S.missLate : S.missEarly)(missSecs.toFixed(3));
+  g.shadowBlur = 20; g.shadowColor = COL.miss;
+  g.fillText(msg, CX, CY + R * 0.55);
+  g.shadowBlur = 0;
+}
+
+function renderPanel(now) {
+  const Hp = Math.min(420, H * 0.62);
+  const f = clamp(panelT / 0.25, 0, 1);
+  const top = H - Hp * backOut(f);
+  g.save();
+  g.fillStyle = 'rgba(13,18,32,0.96)';
+  g.beginPath();
+  g.roundRect(8, top, W - 16, Hp + 24, 18);
+  g.fill();
+  if (newBest) {
+    g.strokeStyle = COL.gold; g.lineWidth = 2;
+    g.shadowBlur = 12; g.shadowColor = COL.gold;
+    g.beginPath(); g.roundRect(8, top, W - 16, Hp + 24, 18); g.stroke();
+    g.shadowBlur = 0;
+  }
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  // taunt
+  g.fillStyle = COL.gray;
+  g.font = '600 17px ' + FONT;
+  g.fillText(tauntText, CX, top + 40);
+  // score
+  g.fillStyle = COL.gray; g.font = '500 15px ' + FONT;
+  g.fillText(S.lblScore, CX, top + 78);
+  g.fillStyle = newBest ? COL.gold : COL.needle;
+  g.font = '800 54px ' + FONT;
+  drawTabular(String(shownScore), CX, top + 118);
+  // record rows
+  const rows = [
+    [S.lblBest, save.bestScore, newBest],
+    [S.lblBestStreak, save.bestStreak, newBestStreak],
+    [S.lblLifetime, save.lifetimePerfects, false],
+  ];
+  let ry = top + 176;
+  for (const [lbl, val, isNew] of rows) {
+    g.textAlign = 'left';
+    g.fillStyle = COL.gray; g.font = '500 15px ' + FONT;
+    g.fillText(lbl, CX - 130, ry);
+    g.textAlign = 'right';
+    g.fillStyle = COL.needle; g.font = '700 18px ' + FONT;
+    g.fillText(String(val), CX + (isNew ? 74 : 130), ry);
+    if (isNew && countDone) {
+      const pulse2 = 1 + 0.12 * Math.sin(now / 120);
+      g.textAlign = 'right';
+      g.fillStyle = COL.gold;
+      g.font = '800 ' + Math.round(15 * pulse2) + 'px ' + FONT;
+      g.shadowBlur = 10; g.shadowColor = COL.gold;
+      g.fillText(S.newFlare, CX + 130, ry);
+      g.shadowBlur = 0;
+    }
+    ry += 34;
+  }
+  // restart prompt (after lockout)
+  if (panelT >= 0.4) {
+    const pulse = 0.55 + 0.45 * Math.sin(now / 400);
+    g.globalAlpha = pulse;
+    g.textAlign = 'center';
+    g.fillStyle = COL.needle;
+    g.font = '700 19px ' + FONT;
+    g.fillText(S.tapRestart, CX, top + Hp - 36);
+    g.globalAlpha = 1;
+  }
+  g.restore();
+}
+
+function renderMute() {
+  const r = muteRect();
+  const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+  g.save();
+  g.globalAlpha = 0.75;
+  g.strokeStyle = COL.needle; g.fillStyle = COL.needle; g.lineWidth = 2;
+  // speaker body
+  g.beginPath();
+  g.moveTo(cx - 9, cy - 4); g.lineTo(cx - 4, cy - 4); g.lineTo(cx + 2, cy - 9);
+  g.lineTo(cx + 2, cy + 9); g.lineTo(cx - 4, cy + 4); g.lineTo(cx - 9, cy + 4);
+  g.closePath(); g.fill();
+  if (muted) {
+    g.strokeStyle = COL.miss;
+    g.beginPath(); g.moveTo(cx + 5, cy - 6); g.lineTo(cx + 13, cy + 6); g.stroke();
+    g.beginPath(); g.moveTo(cx + 13, cy - 6); g.lineTo(cx + 5, cy + 6); g.stroke();
+  } else {
+    g.beginPath(); g.arc(cx + 4, cy, 5, -0.9, 0.9); g.stroke();
+    g.beginPath(); g.arc(cx + 4, cy, 9, -0.9, 0.9); g.stroke();
+  }
+  g.restore();
+}
+
+/* ---------------- main loop ---------------- */
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = clamp((now - lastNow) / 1000, 0, 0.05);
+  lastNow = now;
+  if (paused) return;
+  update(dt);
+  render(now);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
