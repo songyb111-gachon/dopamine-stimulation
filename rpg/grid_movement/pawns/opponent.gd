@@ -8,4 +8,5 @@ var lost = false
 
 
 func _ready():
+	._ready()
 	set_process(false)

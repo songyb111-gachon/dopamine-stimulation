@@ -13,12 +13,10 @@ func _ready():
 	combat_screen = get_node(combat_screen)
 	combat_screen.connect("combat_finished", self, "_on_combat_finished")
 	for n in $Exploration/Grid.get_children():
-		if not n.type == n.CellType.ACTOR:
-			continue
 		if not n.has_node("DialoguePlayer"):
 			continue
 		n.get_node("DialoguePlayer").connect("dialogue_finished", self,
-			"_on_opponent_dialogue_finished", [n])
+			"_on_pawn_dialogue_finished", [n])
 	remove_child(combat_screen)
 
 
@@ -32,12 +30,19 @@ func start_combat(combat_actors):
 	$AnimationPlayer.play_backwards("fade")
 
 
-func _on_opponent_dialogue_finished(opponent):
-	if opponent.lost:
+func _on_pawn_dialogue_finished(pawn):
+	if pawn.has_method("on_dialogue_finished"):
+		pawn.on_dialogue_finished()
+		return
+	if pawn.type != pawn.CellType.ACTOR:
+		return
+	if pawn.get("lost") == true:
+		return
+	var combat_actor = pawn.get("combat_actor")
+	if combat_actor == null:
 		return
 	var player = $Exploration/Grid/Player
-	var combatants = [player.combat_actor, opponent.combat_actor]
-	start_combat(combatants)
+	start_combat([player.combat_actor, combat_actor])
 
 
 func _on_combat_finished(winner, loser):
@@ -58,6 +63,7 @@ func _on_combat_finished(winner, loser):
 			PlayerData.add_item(item.id, item.name, item.kind, 1, item)
 			PlayerData.equip(item)
 			PlayerData.flags["looted_" + loser.loot_id] = true
+			$Exploration/Grid.check_gates()
 		dialogue.dialogue_file = PLAYER_WIN
 	else:
 		# soft defeat: revive at half HP rather than a hard game-over screen —

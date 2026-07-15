@@ -1,0 +1,68 @@
+[gd_scene load_steps=5 format=2]
+
+[ext_resource path="res://theme/theme.tres" type="Theme" id=1]
+[ext_resource path="res://shop/shop_ui.gd" type="Script" id=2]
+[ext_resource path="res://theme/fonts/montserrat_extra_bold_32.tres" type="DynamicFont" id=3]
+[ext_resource path="res://theme/fonts/montserrat_extra_bold_24.tres" type="DynamicFont" id=4]
+
+[node name="ShopUI" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 1
+theme = ExtResource( 1 )
+script = ExtResource( 2 )
+
+[node name="Dim" type="ColorRect" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color( 0.02, 0.03, 0.06, 0.72 )
+
+[node name="Panel" type="Panel" parent="."]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+margin_left = -320.0
+margin_top = -260.0
+margin_right = 320.0
+margin_bottom = 260.0
+
+[node name="VBox" type="VBoxContainer" parent="Panel"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+margin_left = 30.0
+margin_top = 24.0
+margin_right = -30.0
+margin_bottom = -24.0
+custom_constants/separation = 14
+
+[node name="Title" type="Label" parent="Panel/VBox"]
+custom_fonts/font = ExtResource( 3 )
+custom_colors/font_color = Color( 1.0, 0.788, 0.251, 1 )
+text = "상인"
+align = 1
+
+[node name="Gold" type="Label" parent="Panel/VBox"]
+custom_fonts/font = ExtResource( 4 )
+custom_colors/font_color = Color( 0.85, 0.9, 0.95, 1 )
+text = "소지금: 0 G"
+align = 1
+
+[node name="ItemsScroll" type="ScrollContainer" parent="Panel/VBox"]
+margin_top = 84.0
+margin_bottom = 344.0
+size_flags_vertical = 3
+rect_min_size = Vector2( 0, 260 )
+
+[node name="Items" type="VBoxContainer" parent="Panel/VBox/ItemsScroll"]
+margin_right = 560.0
+size_flags_horizontal = 3
+custom_constants/separation = 10
+
+[node name="Close" type="Button" parent="Panel/VBox"]
+margin_top = 358.0
+margin_bottom = 398.0
+custom_fonts/font = ExtResource( 4 )
+text = "닫기"
+
+[connection signal="pressed" from="Panel/VBox/Close" to="." method="_on_Close_pressed"]

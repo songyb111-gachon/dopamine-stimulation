@@ -6,6 +6,10 @@
 export.cfg
 export_presets.cfg
 
+# Documentation screenshots aren't game assets — don't let the editor's
+# asset scan generate .import sidecars for them
+screenshots/*.import
+
 # Imported translations (automatically generated from CSV files)
 *.translation
 

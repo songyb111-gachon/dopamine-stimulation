@@ -4,10 +4,43 @@ extends TileMap
 enum CellType { ACTOR, OBSTACLE, OBJECT }
 export(NodePath) var dialogue_ui
 
+# quest gates: a wall of obstacle tiles that opens permanently once its flag
+# is set. Cells are carved at _ready() if the flag is already true (continue/
+# load-game), and live via open_gate() the instant the flag is set in-session.
+const GATES = {
+	"forest_to_cave": {"flag": "looted_thorn_scale_armor", "x": [17, 30], "y": [4, 5]},
+	"cave_to_ruins": {"flag": "opened_cave_chest", "x": [48, 50], "y": [4, 5]},
+}
+
 
 func _ready():
 	for child in get_children():
 		set_cellv(world_to_map(child.position), child.type)
+	_apply_open_gates()
+
+
+func _apply_open_gates():
+	for gate_id in GATES:
+		if PlayerData.flags.get(GATES[gate_id].flag, false):
+			open_gate(gate_id)
+
+
+func open_gate(gate_id):
+	var gate = GATES[gate_id]
+	for y in range(gate.y[0], gate.y[1] + 1):
+		for x in range(gate.x[0], gate.x[1] + 1):
+			set_cellv(Vector2(x, y), -1)
+
+
+func check_gates():
+	for gate_id in GATES:
+		if PlayerData.flags.get(GATES[gate_id].flag, false):
+			open_gate(gate_id)
+	# also refresh any NPC/sign dialogue gated on the same flags so text that
+	# was "blocked" updates immediately, not just on the next scene load
+	for child in get_children():
+		if child.has_method("_apply_epilogue"):
+			child._apply_epilogue()
 
 
 func get_cell_pawn(cell, type = CellType.ACTOR):

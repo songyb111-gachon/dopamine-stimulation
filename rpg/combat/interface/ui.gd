@@ -36,12 +36,58 @@ func initialize():
 func _open_timing_prompt(label, on_resolved):
 	if _prompt_active:
 		return
+	_maybe_announce_phase_transition()
 	_prompt_active = true
 	$Buttons.hide()
 	var prompt = TimingPromptScene.instance()
 	prompt.label_text = label
+	var phase = _opponent_phase()
+	if phase != null:
+		prompt.sweep_time = phase.sweep_time
+		prompt.perfect_half_width = phase.perfect_half_width
+		prompt.good_half_width = phase.good_half_width
 	add_child(prompt)
 	prompt.connect("resolved", self, "_on_prompt_resolved", [prompt, on_resolved], CONNECT_ONESHOT)
+
+
+func _opponent_phase():
+	if not combatants_node.has_node("Opponent"):
+		return null
+	var opponent = combatants_node.get_node("Opponent")
+	if not ("phases" in opponent) or opponent.phases.empty():
+		return null
+	return opponent.current_phase()
+
+
+func _maybe_announce_phase_transition():
+	if not combatants_node.has_node("Opponent"):
+		return
+	var opponent = combatants_node.get_node("Opponent")
+	if not ("phases" in opponent) or opponent.phases.empty():
+		return
+	var idx = opponent.current_phase_index()
+	if idx <= opponent._last_phase_index:
+		return
+	var line_index = idx - 1
+	if line_index >= 0 and line_index < opponent.phase_transition_dialogue.size():
+		_show_boss_line(opponent.phase_transition_dialogue[line_index])
+	opponent._last_phase_index = idx
+
+
+func _show_boss_line(text):
+	var label = Label.new()
+	label.text = text
+	label.align = Label.ALIGN_CENTER
+	label.anchor_right = 1.0
+	label.margin_top = 20
+	label.margin_bottom = 60
+	label.add_color_override("font_color", Color(1.0, 0.788, 0.251, 1))
+	add_child(label)
+	var tween = Tween.new()
+	label.add_child(tween)
+	tween.interpolate_property(label, "modulate:a", 1.0, 0.0, 1.0, Tween.TRANS_LINEAR, Tween.EASE_IN, 2.0)
+	tween.start()
+	tween.connect("tween_all_completed", label, "queue_free")
 
 
 func _on_prompt_resolved(tier, prompt, on_resolved):
