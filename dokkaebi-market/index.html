@@ -1,0 +1,1234 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>도깨비 야시장</title>
+<style>
+:root{
+  --bg:#0d0a1a; --bg2:#161028; --card:#1e1733; --card2:#251c3f;
+  --ink:#efe9dc; --ink-dim:#9d94b8; --gold:#ffc94d; --gold-deep:#e8a020;
+  --red:#ff5d5d; --teal:#4dd0c4; --purple:#b07cff;
+  --r-c:#8d879f; --r-u:#4dd0c4; --r-r:#b07cff; --r-l:#ffc94d;
+  --curse:#ff5d7e;
+}
+*{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
+html,body{height:100%;}
+body{
+  background:
+    radial-gradient(600px 400px at 15% -5%, rgba(255,170,60,.10), transparent 60%),
+    radial-gradient(700px 500px at 90% 0%, rgba(120,70,255,.12), transparent 60%),
+    radial-gradient(900px 700px at 50% 110%, rgba(30,18,60,.9), transparent 70%),
+    var(--bg);
+  color:var(--ink);
+  font-family:'Apple SD Gothic Neo','Malgun Gothic','Noto Sans KR',system-ui,sans-serif;
+  overflow:hidden; user-select:none;
+}
+button{font-family:inherit; cursor:pointer; border:none; color:inherit; background:none;}
+.screen{position:fixed; inset:0; display:none; flex-direction:column; align-items:center; overflow:hidden;}
+.screen.on{display:flex;}
+
+/* ---------- title ---------- */
+#scr-title{justify-content:center; gap:14px; text-align:center;}
+#scr-title h1{
+  font-size:min(15vw,84px); color:var(--gold); letter-spacing:.06em;
+  text-shadow:0 0 30px rgba(255,190,70,.45), 0 4px 0 rgba(0,0,0,.4);
+  animation:titleGlow 3s ease-in-out infinite;
+}
+@keyframes titleGlow{50%{text-shadow:0 0 55px rgba(255,190,70,.8),0 4px 0 rgba(0,0,0,.4);}}
+#scr-title .sub{color:var(--ink-dim); font-size:17px; margin-bottom:18px;}
+.btn{
+  background:linear-gradient(180deg,var(--gold),var(--gold-deep));
+  color:#2a1c05; font-weight:800; font-size:20px; padding:14px 46px;
+  border-radius:14px; box-shadow:0 6px 0 #8a5c0e, 0 10px 24px rgba(0,0,0,.5);
+  transition:transform .08s, box-shadow .08s;
+}
+.btn:active{transform:translateY(4px); box-shadow:0 2px 0 #8a5c0e;}
+.btn.ghost{background:var(--card); color:var(--ink); box-shadow:0 4px 0 #0a0716; font-size:16px; padding:11px 32px;}
+.btn:disabled{filter:grayscale(.8) brightness(.6); cursor:default;}
+#title-lanterns{position:absolute; inset:0; pointer-events:none; z-index:-1;}
+#meta-line{color:var(--ink-dim); font-size:13px; margin-top:22px;}
+
+/* ---------- game layout ---------- */
+#scr-game{padding:10px 12px; gap:8px;}
+#topbar{
+  width:100%; max-width:640px; display:flex; align-items:center; gap:10px;
+}
+#coin-box{
+  display:flex; align-items:baseline; gap:6px; background:var(--card);
+  padding:8px 16px; border-radius:12px; border:1px solid rgba(255,201,77,.25);
+}
+#coin-num{font-size:26px; font-weight:900; color:var(--gold); min-width:70px; text-align:right;
+  font-variant-numeric:tabular-nums;}
+#coin-box .unit{color:var(--ink-dim); font-size:13px;}
+#rent-box{flex:1; background:var(--card); border-radius:12px; padding:6px 12px; position:relative; overflow:hidden;}
+#rent-label{display:flex; justify-content:space-between; font-size:13px; color:var(--ink-dim);}
+#rent-label b{color:var(--ink);}
+#rent-bar{height:7px; border-radius:4px; background:#0d0a1a; margin-top:5px; overflow:hidden;}
+#rent-fill{height:100%; width:0%; background:linear-gradient(90deg,var(--teal),var(--gold)); transition:width .4s;}
+#rent-box.danger #rent-fill{background:linear-gradient(90deg,#ff8c5d,var(--red));}
+#rent-box.danger{animation:pulseRed 1s infinite;}
+@keyframes pulseRed{50%{box-shadow:0 0 0 3px rgba(255,93,93,.35) inset;}}
+.iconbtn{background:var(--card); border-radius:12px; padding:8px 12px; font-size:18px;}
+
+#grid-wrap{position:relative; width:100%; max-width:640px;}
+#grid{
+  display:grid; grid-template-columns:repeat(5,1fr); gap:8px;
+  width:100%; background:rgba(0,0,0,.28); padding:10px; border-radius:18px;
+  border:1px solid rgba(255,255,255,.06);
+}
+.cell{
+  aspect-ratio:1; background:var(--card); border-radius:12px; position:relative;
+  display:flex; align-items:center; justify-content:center;
+  border:1px solid rgba(255,255,255,.05); overflow:visible;
+}
+.cell .em{font-size:min(9vw,44px); line-height:1; filter:drop-shadow(0 3px 4px rgba(0,0,0,.5));}
+.cell.r-c{box-shadow:inset 0 0 0 1px rgba(141,135,159,.25);}
+.cell.r-u{box-shadow:inset 0 0 0 1px rgba(77,208,196,.45);}
+.cell.r-r{box-shadow:inset 0 0 0 1px rgba(176,124,255,.55), 0 0 12px rgba(176,124,255,.15);}
+.cell.r-l{box-shadow:inset 0 0 0 2px rgba(255,201,77,.65), 0 0 18px rgba(255,201,77,.28);}
+.cell.curse{box-shadow:inset 0 0 0 1px rgba(255,93,126,.6), 0 0 12px rgba(255,93,126,.2);}
+.cell .badge{
+  position:absolute; right:4px; bottom:3px; font-size:11px; font-weight:700;
+  background:rgba(0,0,0,.55); color:var(--teal); border-radius:8px; padding:1px 5px;
+}
+.cell .badge.store{color:var(--gold);}
+.cell.pop .em{animation:cellPop .34s;}
+@keyframes cellPop{0%{transform:scale(1);}40%{transform:scale(1.35);}100%{transform:scale(1);}}
+.cell.destroyed .em{animation:cellDie .45s forwards;}
+@keyframes cellDie{60%{transform:scale(1.4) rotate(14deg); opacity:1;}100%{transform:scale(0); opacity:0;}}
+.cell.rolling .em{animation:rollBlur .09s infinite;}
+@keyframes rollBlur{0%{transform:translateY(-6px); opacity:.4;}100%{transform:translateY(6px); opacity:.9;}}
+.floater{
+  position:absolute; left:50%; top:8%; transform:translateX(-50%);
+  font-weight:900; font-size:17px; color:var(--gold); pointer-events:none;
+  text-shadow:0 2px 4px rgba(0,0,0,.8); animation:floatUp 1s forwards; z-index:5;
+}
+.floater.neg{color:var(--red);}
+.floater.big{font-size:23px; color:#fff; text-shadow:0 0 12px var(--gold),0 2px 4px rgba(0,0,0,.9);}
+@keyframes floatUp{0%{opacity:0; transform:translate(-50%,6px) scale(.6);}
+  20%{opacity:1; transform:translate(-50%,-2px) scale(1.15);}
+  100%{opacity:0; transform:translate(-50%,-30px) scale(1);}}
+#synergy-svg{position:absolute; inset:10px; width:calc(100% - 20px); height:calc(100% - 20px);
+  pointer-events:none; z-index:4;}
+#synergy-svg line{stroke:var(--gold); stroke-width:2.5; stroke-linecap:round; opacity:0;}
+#synergy-svg line.show{animation:synFlash .7s forwards;}
+@keyframes synFlash{0%{opacity:0;}25%{opacity:.9;}100%{opacity:0;}}
+
+#caption{width:100%; max-width:640px; min-height:38px; background:rgba(0,0,0,.25);
+  border-radius:10px; padding:7px 12px; font-size:13px; color:var(--ink-dim); text-align:center;}
+#caption b{color:var(--ink);}
+
+#bottombar{width:100%; max-width:640px; display:flex; gap:10px; align-items:center;}
+#btn-spin{
+  flex:1; font-size:26px; font-weight:900; padding:16px 0; border-radius:16px;
+  background:linear-gradient(180deg,var(--gold),var(--gold-deep)); color:#2a1c05;
+  box-shadow:0 7px 0 #8a5c0e, 0 12px 28px rgba(0,0,0,.55); letter-spacing:.1em;
+  transition:transform .08s, box-shadow .08s;
+}
+#btn-spin:active:not(:disabled){transform:translateY(5px); box-shadow:0 2px 0 #8a5c0e;}
+#btn-spin.lastchance{background:linear-gradient(180deg,#ff7d6d,#d23a3a); color:#fff;
+  animation:pulseRed 0.8s infinite;}
+#relic-tray{width:100%; max-width:640px; display:flex; gap:6px; min-height:34px; flex-wrap:wrap;}
+.relic-chip{background:var(--card); border:1px solid rgba(255,201,77,.3); border-radius:9px;
+  padding:4px 8px; font-size:15px;}
+
+/* ---------- overlay ---------- */
+#overlay{
+  position:fixed; inset:0; background:rgba(8,5,18,.78); backdrop-filter:blur(5px);
+  display:none; align-items:center; justify-content:center; z-index:50; padding:16px;
+}
+#overlay.on{display:flex;}
+#ov-panel{
+  background:var(--bg2); border:1px solid rgba(255,255,255,.08); border-radius:20px;
+  padding:26px 24px; max-width:680px; width:100%; text-align:center;
+  box-shadow:0 30px 80px rgba(0,0,0,.7); max-height:92vh; overflow-y:auto;
+}
+#ov-panel h2{font-size:24px; margin-bottom:6px; color:var(--gold);}
+#ov-panel .ov-sub{color:var(--ink-dim); font-size:14px; margin-bottom:18px;}
+#ov-panel.lastchance{border-color:rgba(255,93,93,.5); box-shadow:0 0 60px rgba(255,60,60,.25), 0 30px 80px rgba(0,0,0,.7);}
+.cards{display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-bottom:14px;}
+.card{
+  width:150px; background:var(--card); border-radius:14px; padding:16px 10px 12px;
+  border:2px solid var(--r-c); transition:transform .12s, box-shadow .12s; position:relative;
+}
+.card:hover{transform:translateY(-6px) scale(1.03);}
+.card .c-em{font-size:44px; margin-bottom:8px; filter:drop-shadow(0 4px 6px rgba(0,0,0,.5));}
+.card .c-nm{font-weight:800; font-size:16px; margin-bottom:4px;}
+.card .c-desc{font-size:12px; color:var(--ink-dim); line-height:1.45; min-height:52px;}
+.card .c-rar{font-size:11px; font-weight:700; margin-top:7px;}
+.card.r-c{border-color:var(--r-c);} .card.r-c .c-rar{color:var(--r-c);}
+.card.r-u{border-color:var(--r-u);} .card.r-u .c-rar{color:var(--r-u);}
+.card.r-r{border-color:var(--r-r); box-shadow:0 0 18px rgba(176,124,255,.25);} .card.r-r .c-rar{color:var(--r-r);}
+.card.r-l{border-color:var(--r-l); box-shadow:0 0 26px rgba(255,201,77,.4);} .card.r-l .c-rar{color:var(--r-l);}
+.card.r-l .c-nm{color:var(--gold);}
+.card.curse{border-color:var(--curse); box-shadow:0 0 18px rgba(255,93,126,.3);}
+.card.curse .c-rar{color:var(--curse);}
+.card.legend-entrance{animation:legendIn .8s cubic-bezier(.2,1.6,.4,1);}
+@keyframes legendIn{0%{transform:scale(.3) rotate(-8deg); opacity:0;}100%{transform:scale(1);}}
+.ov-row{display:flex; gap:10px; justify-content:center; flex-wrap:wrap;}
+
+/* ---------- inventory ---------- */
+#inv-panel{
+  position:fixed; right:0; top:0; bottom:0; width:min(340px,92vw); background:var(--bg2);
+  border-left:1px solid rgba(255,255,255,.1); z-index:60; padding:18px 14px;
+  transform:translateX(100%); transition:transform .22s; overflow-y:auto;
+}
+#inv-panel.on{transform:none;}
+#inv-panel h3{color:var(--gold); margin-bottom:4px;}
+#inv-cap{font-size:12px; color:var(--ink-dim); margin-bottom:12px;}
+#inv-cap.warn{color:var(--red); font-weight:700;}
+.inv-item{
+  display:flex; align-items:center; gap:10px; background:var(--card); border-radius:10px;
+  padding:7px 10px; margin-bottom:6px; font-size:14px;
+}
+.inv-item .em{font-size:22px;}
+.inv-item .nm{flex:1;} .inv-item .nm small{display:block; color:var(--ink-dim); font-size:11px;}
+.inv-item .rm{background:#3a2430; color:var(--red); border-radius:8px; padding:4px 9px; font-size:12px; font-weight:700;}
+#codex-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(74px,1fr)); gap:8px; margin:14px 0;}
+.dex{background:var(--card); border-radius:10px; padding:8px 4px; text-align:center; font-size:11px; color:var(--ink-dim);}
+.dex .em{font-size:26px; display:block;}
+.dex.unknown{opacity:.3; filter:grayscale(1);}
+.ach{display:flex; gap:10px; align-items:center; background:var(--card); border-radius:10px;
+  padding:8px 12px; margin-bottom:6px; text-align:left; font-size:13px;}
+.ach.done{border:1px solid rgba(255,201,77,.4);}
+.ach .a-ic{font-size:20px;} .ach small{display:block; color:var(--ink-dim); font-size:11px;}
+
+/* ---------- toast & fx ---------- */
+#toasts{position:fixed; top:68px; left:50%; transform:translateX(-50%); z-index:90;
+  display:flex; flex-direction:column; gap:8px; align-items:center; pointer-events:none;}
+.toast{background:var(--card2); border:1px solid rgba(255,201,77,.5); color:var(--ink);
+  padding:10px 22px; border-radius:12px; font-size:14px; font-weight:700;
+  box-shadow:0 8px 24px rgba(0,0,0,.6); animation:toastIn 3.4s forwards;}
+@keyframes toastIn{0%{opacity:0; transform:translateY(-14px);}8%{opacity:1; transform:none;}
+  85%{opacity:1;}100%{opacity:0; transform:translateY(-8px);}}
+body.shake{animation:shake .4s;}
+@keyframes shake{0%,100%{transform:none;}20%{transform:translate(-7px,3px);}
+  40%{transform:translate(6px,-4px);}60%{transform:translate(-4px,2px);}80%{transform:translate(3px,-2px);}}
+#flash{position:fixed; inset:0; background:radial-gradient(circle,rgba(255,220,120,.55),transparent 70%);
+  opacity:0; pointer-events:none; z-index:80;}
+#flash.go{animation:flashGo .55s;}
+@keyframes flashGo{0%{opacity:0;}20%{opacity:1;}100%{opacity:0;}}
+#vignette{position:fixed; inset:0; pointer-events:none; z-index:40; opacity:0; transition:opacity .5s;
+  background:radial-gradient(circle, transparent 45%, rgba(180,20,30,.55) 100%);}
+#vignette.on{opacity:1; animation:vigPulse 1.1s infinite;}
+@keyframes vigPulse{50%{opacity:.55;}}
+#fx-canvas{position:fixed; inset:0; pointer-events:none; z-index:85;}
+.hidden{display:none !important;}
+</style>
+</head>
+<body>
+
+<div id="scr-title" class="screen on">
+  <canvas id="title-lanterns"></canvas>
+  <h1>도깨비 야시장</h1>
+  <div class="sub">밤이 깊을수록, 시장은 후해진다 — 슬롯 빌더 로그라이크</div>
+  <button class="btn" id="btn-newrun">개업하기</button>
+  <div class="ov-row" style="margin-top:8px">
+    <button class="btn ghost" id="btn-codex">도감 · 업적</button>
+  </div>
+  <div id="meta-line"></div>
+</div>
+
+<div id="scr-game" class="screen">
+  <div id="topbar">
+    <div id="coin-box"><span id="coin-num">0</span><span class="unit">닢</span></div>
+    <div id="rent-box">
+      <div id="rent-label"><span>자릿세 <b id="rent-idx">1</b>회차 · <b id="rent-amt">25</b>닢</span>
+        <span><b id="rent-left">5</b>스핀 남음</span></div>
+      <div id="rent-bar"><div id="rent-fill"></div></div>
+    </div>
+    <button class="iconbtn" id="btn-inv">🎒</button>
+  </div>
+  <div id="grid-wrap">
+    <div id="grid"></div>
+    <svg id="synergy-svg"></svg>
+  </div>
+  <div id="caption">심볼 위에 마우스를 올리면 설명이 표시됩니다</div>
+  <div id="bottombar">
+    <button id="btn-spin">돌리기</button>
+  </div>
+  <div id="relic-tray"></div>
+</div>
+
+<div id="overlay"><div id="ov-panel"></div></div>
+
+<div id="inv-panel">
+  <h3>보따리 <button class="iconbtn" id="btn-inv-close" style="float:right">✕</button></h3>
+  <div id="inv-cap"></div>
+  <div id="inv-list"></div>
+</div>
+
+<div id="toasts"></div>
+<div id="flash"></div>
+<div id="vignette"></div>
+<canvas id="fx-canvas"></canvas>
+
+<script>
+'use strict';
+// ================================================================
+// DATA — symbols, relics, achievements
+// ================================================================
+function mulberry32(seed){let t=seed>>>0;return function(){t+=0x6D2B79F5;let r=Math.imul(t^t>>>15,1|t);r^=r+Math.imul(r^r>>>7,61|r);return((r^r>>>14)>>>0)/4294967296;};}
+
+const RAR={c:'커먼',u:'언커먼',r:'레어',l:'전설'};
+// def: id,nm,e(emoji),r(rarity),base,tags[],grow(need),desc
+// tags: food, animal, livestock, dk(도깨비계열), sasinsu, curse, coinlike
+const SYMBOLS={
+ // --- 커먼 ---
+ yeopjeon:{nm:'엽전',e:'🪙',r:'c',base:1,tags:['coinlike'],desc:'엽전 1닢.'},
+ rice:{nm:'쌀',e:'🍚',r:'c',base:1,tags:['food'],desc:'음식. 돼지가 좋아한다.'},
+ corn:{nm:'옥수수',e:'🌽',r:'c',base:1,tags:['food'],desc:'음식. 돼지가 좋아한다.'},
+ fish:{nm:'생선',e:'🐟',r:'c',base:1,tags:['food'],desc:'음식. 고양이가 노린다.'},
+ apple:{nm:'사과',e:'🍎',r:'c',base:1,tags:['food'],desc:'음식. 나무에서 열린다.'},
+ namul:{nm:'나물',e:'🥬',r:'c',base:1,tags:['food'],desc:'음식. 소박하다.'},
+ pebble:{nm:'조약돌',e:'🪨',r:'c',base:0,tags:[],desc:'아무 가치 없는 돌... 정말?'},
+ egg:{nm:'달걀',e:'🥚',r:'c',base:0,grow:3,tags:['animal'],desc:'3스핀 뒤 병아리가 된다.'},
+ chick:{nm:'병아리',e:'🐤',r:'c',base:1,grow:4,tags:['animal'],desc:'4스핀 뒤 닭이 된다.'},
+ seed:{nm:'씨앗',e:'🌱',r:'c',base:0,grow:4,tags:[],desc:'4스핀 뒤 꽃(70%) 또는 나무(30%)가 된다.'},
+ flower:{nm:'꽃',e:'🌸',r:'c',base:1,tags:[],desc:'벌이 찾아온다.'},
+ pig:{nm:'돼지',e:'🐖',r:'c',base:2,tags:['animal','livestock'],desc:'인접한 음식 1개당 +1닢.'},
+ cat:{nm:'고양이',e:'🐱',r:'c',base:1,tags:['animal'],desc:'인접한 생선·쥐를 먹고 영구히 +1 강해진다.'},
+ rat:{nm:'쥐',e:'🐁',r:'c',base:1,tags:['animal'],desc:'인접한 음식을 먹어치우고 +3닢. 양날의 검.'},
+ jar:{nm:'항아리',e:'🏺',r:'c',base:0,tags:[],desc:'매 스핀 1닢씩 저장. 파괴될 때 전액 지급!'},
+ // --- 저주 (드래프트에 가끔 등장) ---
+ debt:{nm:'빚문서',e:'📜',r:'c',base:-2,tags:['curse'],curse:true,desc:'매 스핀 -2닢. 획득 시 즉시 +20닢. 제거비 15닢.'},
+ ghost:{nm:'귀신',e:'👻',r:'c',base:-1,tags:['curse'],curse:true,desc:'매 스핀 -1닢. 10%로 인접 심볼의 지급을 0으로. 소금으로 정화하면 +8닢.'},
+ thief:{nm:'도둑',e:'🦹',r:'c',base:-3,tags:['curse'],curse:true,desc:'매 스핀 -3닢. 호랑이 옆이면 잡아먹힌다(+12닢).'},
+ // --- 언커먼 ---
+ hen:{nm:'닭',e:'🐓',r:'u',base:2,tags:['animal','livestock'],desc:'15% 확률로 달걀을 낳아 보따리에 넣는다.'},
+ tree:{nm:'나무',e:'🌳',r:'u',base:0,grow:3,tags:[],desc:'3스핀마다 사과 1개를 보따리에 떨군다.'},
+ bee:{nm:'벌',e:'🐝',r:'u',base:1,tags:['animal'],desc:'인접한 꽃 1개당 +2닢.'},
+ carp:{nm:'잉어',e:'🎏',r:'u',base:1,grow:8,tags:['animal'],desc:'8스핀을 버티면... 용이 된다.'},
+ cow:{nm:'소',e:'🐂',r:'u',base:1,grow:3,tags:['animal','livestock'],desc:'3스핀마다 우유값 +4닢.'},
+ ore:{nm:'원석',e:'💎',r:'u',base:0,tags:[],desc:'3스핀마다 가치 +1. 광부가 캐면 가치 x3 지급.'},
+ miner:{nm:'광부',e:'⛏️',r:'u',base:1,tags:[],desc:'인접한 원석을 캐서 가치x3 지급. 조약돌은 +2닢.'},
+ gold:{nm:'금화',e:'💰',r:'u',base:3,tags:['coinlike'],desc:'금화 3닢.'},
+ sool:{nm:'술병',e:'🍶',r:'u',base:2,tags:['dk'],desc:'도깨비가 아주 좋아한다.'},
+ lantern:{nm:'등불',e:'🏮',r:'u',base:1,tags:['dk'],desc:'인접에 도깨비불이 있으면 지급 x3.'},
+ bujeok:{nm:'부적',e:'🧧',r:'u',base:1,tags:[],desc:'인접한 모든 심볼 +1닢.'},
+ salt:{nm:'소금',e:'🧂',r:'u',base:0,tags:[],desc:'인접한 저주를 정화(파괴)하고 +8닢.'},
+ fisher:{nm:'어부',e:'🎣',r:'u',base:1,grow:3,tags:[],desc:'3스핀마다 생선 1마리를 보따리에 넣는다.'},
+ merchant:{nm:'상인',e:'🧺',r:'u',base:1,tags:[],desc:'인접한 엽전·금화 1개당 +1닢.'},
+ // --- 레어 ---
+ dokkaebi:{nm:'도깨비',e:'👺',r:'r',base:3,tags:['dk'],desc:'인접한 술병 1개당 +3닢. 20%로 술을 마셔버리고(파괴) 영구 +2.'},
+ wisp:{nm:'도깨비불',e:'🔮',r:'r',base:2,tags:['dk'],desc:'인접한 심볼의 지급 +50%.'},
+ bat:{nm:'도깨비방망이',e:'🪄',r:'r',base:1,grow:4,tags:['dk'],desc:'4스핀마다 인접한 가장 값싼 심볼을 금화로 바꾼다. 금 나와라 뚝딱!'},
+ mirror:{nm:'거울',e:'🪞',r:'r',base:0,tags:[],desc:'인접한 심볼 중 가장 높은 지급액을 그대로 복사한다.'},
+ hourglass:{nm:'모래시계',e:'⏳',r:'r',base:0,tags:[],desc:'인접한 심볼의 성장이 2배 속도로 진행된다.'},
+ drum:{nm:'북',e:'🥁',r:'r',base:0,tags:[],desc:'매 스핀 인접한 심볼 1개를 한 번 더 발동시킨다.'},
+ pouch:{nm:'복주머니',e:'🎁',r:'r',base:0,tags:[],desc:'0~9닢을 무작위로 지급한다. 순수한 도박.'},
+ tiger:{nm:'호랑이',e:'🐯',r:'r',base:4,tags:['animal'],desc:'인접한 닭·돼지·소를 잡아먹고 영구 +3. 도둑은 +12닢에 처리.'},
+ toad:{nm:'금두꺼비',e:'🐸',r:'r',base:3,tags:[],desc:'인접한 조약돌 1개당 +3닢. 돌의 진가를 안다.',lock:'ach_pebble5'},
+ pawn:{nm:'전당포',e:'🏦',r:'r',base:0,tags:[],desc:'보유 엽전 12닢당 +1닢 (최대 +30). 부익부.',lock:'ach_bigspin'},
+ // --- 전설 ---
+ cheongryong:{nm:'청룡',e:'🐲',r:'l',base:5,tags:['sasinsu'],desc:'사신수. 다른 사신수 1종당 +3. 넷이 모이면 각자 +25닢!'},
+ baekho:{nm:'백호',e:'🐅',r:'l',base:5,tags:['sasinsu'],desc:'사신수. 다른 사신수 1종당 +3. 넷이 모이면 각자 +25닢!'},
+ jujak:{nm:'주작',e:'🦚',r:'l',base:5,tags:['sasinsu'],desc:'사신수. 다른 사신수 1종당 +3. 넷이 모이면 각자 +25닢!'},
+ hyeonmu:{nm:'현무',e:'🐢',r:'l',base:5,tags:['sasinsu'],desc:'사신수. 다른 사신수 1종당 +3. 넷이 모이면 각자 +25닢!'},
+ dragon:{nm:'용',e:'🐉',r:'l',base:8,tags:['animal'],nodraft:true,desc:'잉어의 승천. 인접한 모든 심볼 +2닢.'},
+ hwasubun:{nm:'화수분',e:'⚱️',r:'l',base:0,tags:[],lock:'ach_firstwin',desc:'매 스핀 엽전 1개를 보따리에 만들어낸다. 넘치는 것도 문제.'},
+ king:{nm:'도깨비 대왕',e:'👹',r:'l',base:6,tags:['dk'],lock:'ach_dktrio',desc:'인접한 도깨비 계열(도깨비·도깨비불·방망이·술병·등불)의 지급 x2.'},
+};
+for(const id in SYMBOLS) SYMBOLS[id].id=id;
+
+const CURSE_IDS=['debt','ghost','thief'];
+const SASINSU=['cheongryong','baekho','jujak','hyeonmu'];
+const RARITY_W={c:70,u:22,r:7,l:1};
+
+const RELICS={
+ chorong:{nm:'청사초롱',e:'🏮',desc:'드래프트에서 4장 중 고른다.'},
+ bokjori:{nm:'복조리',e:'🍀',desc:'희귀한 심볼이 50% 더 자주 나온다.'},
+ abacus:{nm:'낡은 주판',e:'🧮',desc:'매 스핀 수익에 5% 이자가 붙는다.'},
+ broom:{nm:'억새 빗자루',e:'🧹',desc:'심볼 제거 비용이 반값이 된다.'},
+ brass:{nm:'놋그릇',e:'🥣',desc:'항아리가 매 스핀 2닢씩 저장한다.'},
+ sansin:{nm:'산신 부적',e:'🗻',desc:'새로 얻는 성장 심볼의 카운터가 1 차감된 채 시작.'},
+ bellows:{nm:'대장간 풀무',e:'🔥',desc:'파괴 보상이 50% 증가한다.'},
+ bojagi:{nm:'비단 보자기',e:'🎀',desc:'드래프트 스킵 보상이 +3닢이 된다.'},
+ kiln:{nm:'옹기 가마',e:'🏺',desc:'항아리를 얻을 때 하나 더 얻는다.'},
+ jokbo:{nm:'족보',e:'📖',desc:'전설 등급에서 사신수가 3배 잘 나온다.'},
+ bronze:{nm:'청동 거울',e:'🥉',desc:'거울이 두 번째로 높은 지급도 절반 복사한다.'},
+ pipe:{nm:'곰방대',e:'🚬',desc:'자릿세 주기가 5스핀에서 6스핀으로 늘어난다.'},
+};
+for(const id in RELICS) RELICS[id].id=id;
+
+const ACHIEVEMENTS={
+ ach_firstrent:{nm:'개시 손님',desc:'첫 자릿세를 완납한다',ic:'🧧'},
+ ach_bigspin:{nm:'대박의 밤',desc:'한 스핀에 100닢을 번다 — 전당포 해금',ic:'💥',unlock:'pawn'},
+ ach_clutch:{nm:'벼랑 끝 승부사',desc:'마지막 승부에서 살아남는다',ic:'🎲'},
+ ach_sasinsu:{nm:'사방신 강림',desc:'사신수 넷을 모두 모은다',ic:'🌌'},
+ ach_dragon:{nm:'등용문',desc:'잉어를 용으로 승천시킨다',ic:'🐉'},
+ ach_firstwin:{nm:'시장의 주인',desc:'자릿세 10회를 완납한다 — 화수분 해금',ic:'👑',unlock:'hwasubun'},
+ ach_dktrio:{nm:'도깨비 잔치',desc:'도깨비 계열 3종을 동시에 보유 — 도깨비 대왕 해금',ic:'👺',unlock:'king'},
+ ach_pebble5:{nm:'수석 수집가',desc:'조약돌 5개를 동시에 보유 — 금두꺼비 해금',ic:'🪨',unlock:'toad'},
+ ach_rich:{nm:'천냥 부자',desc:'엽전 1000닢을 보유한다',ic:'💰'},
+ ach_purge:{nm:'퇴마사',desc:'저주를 소금으로 3번 정화한다',ic:'🧂'},
+ ach_nearmiss:{nm:'아슬아슬',desc:'잔액 10% 이내로 자릿세를 낸다',ic:'😅'},
+ ach_endless15:{nm:'불야성',desc:'무한 모드 15회차에 도달한다',ic:'🌃'},
+};
+
+const RENTS=[25,55,100,170,275,430,650,950,1400,2000];
+const GRID_W=5, GRID_H=4, GRID_N=20;
+// ENGINE — pure logic, no DOM (drivable headlessly)
+// ================================================================
+const META_KEY='dkmkt_v1';
+function loadMeta(){
+  try{const m=JSON.parse(localStorage.getItem(META_KEY));if(m&&m.stats)return m;}catch(e){}
+  return {disc:{},relicsSeen:{},ach:{},purges:0,
+    stats:{runs:0,wins:0,bestSpin:0,bestRent:0,totalSpins:0}};
+}
+let META=loadMeta();
+function saveMeta(){try{localStorage.setItem(META_KEY,JSON.stringify(META));}catch(e){}}
+function isUnlocked(id){const d=SYMBOLS[id];return !d.lock||!!META.ach[d.lock];}
+
+let _uid=1;
+function mkInst(id,S){
+  const d=SYMBOLS[id];
+  const inst={uid:_uid++,id,perm:0,counter:0,stored:0};
+  if(S&&S.relics.includes('sansin')&&d.grow)inst.counter=1;
+  return inst;
+}
+
+function rentDue(S){
+  if(S.rentIdx<RENTS.length)return RENTS[S.rentIdx];
+  return Math.floor(RENTS[RENTS.length-1]*Math.pow(1.55,S.rentIdx-(RENTS.length-1)));
+}
+function rentInterval(S){return S.relics.includes('pipe')?6:5;}
+
+function newRun(seed){
+  const S={
+    seed,rng:mulberry32(seed),
+    coins:10,spin:0,rentIdx:0,nextRentAt:5,
+    inv:[],relics:[],removals:1,
+    lastChanceUsed:false,lastChanceActive:false,
+    over:false,win:false,endless:false,
+    pendingDraft:null,pendingRelics:null,rentPendingAfterDraft:false,
+    run:{bestSpin:0,purges:0,nearmiss:false},
+    achQueue:[],
+  };
+  // 시작 보따리: 엽전3 + 쌀 + 고양이 (귀엽고 안전한 출발)
+  ['yeopjeon','yeopjeon','yeopjeon','rice','cat'].forEach(id=>S.inv.push(mkInst(id,S)));
+  S.nextRentAt=rentInterval(S);
+  return S;
+}
+
+// ---- adjacency ----
+const NEI=[];// precomputed neighbor indices
+for(let i=0;i<GRID_N;i++){
+  const r=Math.floor(i/GRID_W),c=i%GRID_W,list=[];
+  for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){
+    if(!dr&&!dc)continue;
+    const nr=r+dr,nc=c+dc;
+    if(nr>=0&&nr<GRID_H&&nc>=0&&nc<GRID_W)list.push(nr*GRID_W+nc);
+  }
+  NEI.push(list);
+}
+
+function grantAch(S,key){
+  if(META.ach[key])return;
+  META.ach[key]=true;saveMeta();
+  S.achQueue.push(key);
+}
+function discover(id){if(!META.disc[id]){META.disc[id]=true;saveMeta();}}
+
+// ---- the spin ----
+function doSpin(S){
+  const rng=S.rng;
+  const dbl=S.lastChanceActive;
+  // 1. placement
+  const pool=S.inv.slice();
+  for(let i=pool.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
+  const chosen=pool.slice(0,GRID_N);
+  const cellIdx=[...Array(GRID_N).keys()];
+  for(let i=cellIdx.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[cellIdx[i],cellIdx[j]]=[cellIdx[j],cellIdx[i]];}
+  const cells=new Array(GRID_N).fill(null);
+  chosen.forEach((inst,k)=>{cells[cellIdx[k]]=inst;});
+  const alive=cells.map(c=>!!c);
+  const R={cells:cells.map(c=>c?{uid:c.uid,id:c.id}:null),payouts:new Array(GRID_N).fill(0),
+    destroyed:[],transformed:[],spawned:[],synergy:[],nullified:[],drums:[],mirrors:[],
+    destructionBonus:0,total:0,dbl,events:[]};
+  const adjAlive=i=>NEI[i].filter(j=>alive[j]);
+  const findAdj=(i,pred)=>{const c=adjAlive(i).filter(j=>pred(cells[j]));
+    return c.length?c[Math.floor(rng()*c.length)]:-1;};
+  const destroy=(j,cause)=>{
+    const inst=cells[j];if(!inst)return;
+    if(inst.id==='jar'&&inst.stored>0)R.destructionBonus+=inst.stored;
+    alive[j]=false;R.destroyed.push({idx:j,id:inst.id,cause});
+    const k=S.inv.indexOf(inst);if(k>=0)S.inv.splice(k,1);
+  };
+  const spawn=(id)=>{const inst=mkInst(id,S);S.inv.push(inst);R.spawned.push(id);discover(id);};
+
+  // 2. tick counters (growth + ore), hourglass accelerates
+  for(let i=0;i<GRID_N;i++){
+    const inst=cells[i];if(!inst||!alive[i])continue;
+    const d=SYMBOLS[inst.id];
+    if(d.grow||inst.id==='ore'){
+      const hg=adjAlive(i).filter(j=>cells[j].id==='hourglass').length;
+      inst.counter+=1+hg;
+      if(hg)R.synergy.push([i,adjAlive(i).find(j=>cells[j].id==='hourglass')]);
+    }
+  }
+  // 3. destruction pass
+  const bellows=S.relics.includes('bellows');
+  for(let i=0;i<GRID_N;i++){
+    const inst=cells[i];if(!inst||!alive[i])continue;
+    switch(inst.id){
+      case 'tiger':{
+        let t=findAdj(i,c=>c.id==='thief');
+        if(t>=0){destroy(t,'tiger');R.destructionBonus+=12;R.synergy.push([i,t]);}
+        else{t=findAdj(i,c=>SYMBOLS[c.id].tags.includes('livestock'));
+          if(t>=0){destroy(t,'tiger');inst.perm+=3;R.synergy.push([i,t]);}}
+        break;}
+      case 'cat':{
+        const t=findAdj(i,c=>c.id==='fish'||c.id==='rat');
+        if(t>=0){destroy(t,'cat');inst.perm+=1;R.synergy.push([i,t]);}
+        break;}
+      case 'rat':{
+        const t=findAdj(i,c=>SYMBOLS[c.id].tags.includes('food'));
+        if(t>=0){destroy(t,'rat');inst._ate=true;R.synergy.push([i,t]);}
+        break;}
+      case 'miner':{
+        let t=findAdj(i,c=>c.id==='ore');
+        if(t>=0){const v=1+Math.floor(cells[t].counter/3);destroy(t,'miner');
+          R.destructionBonus+=v*3;R.synergy.push([i,t]);}
+        else{t=findAdj(i,c=>c.id==='pebble');
+          if(t>=0){destroy(t,'miner');R.destructionBonus+=2;R.synergy.push([i,t]);}}
+        break;}
+      case 'salt':{
+        const t=findAdj(i,c=>SYMBOLS[c.id].curse);
+        if(t>=0){destroy(t,'salt');R.destructionBonus+=8;R.synergy.push([i,t]);
+          S.run.purges++;META.purges=(META.purges||0)+1;saveMeta();
+          if(META.purges>=3)grantAch(S,'ach_purge');}
+        break;}
+      case 'dokkaebi':{
+        if(rng()<0.2){const t=findAdj(i,c=>c.id==='sool');
+          if(t>=0){destroy(t,'dokkaebi');inst.perm+=2;R.synergy.push([i,t]);}}
+        break;}
+    }
+  }
+  if(bellows)R.destructionBonus=Math.floor(R.destructionBonus*1.5);
+  // 4. transform pass
+  for(let i=0;i<GRID_N;i++){
+    const inst=cells[i];if(!inst||!alive[i])continue;
+    const d=SYMBOLS[inst.id];
+    const morph=(nid)=>{R.transformed.push({idx:i,from:inst.id,to:nid});
+      inst.id=nid;inst.counter=0;discover(nid);};
+    if(d.grow&&inst.counter>=d.grow){
+      switch(inst.id){
+        case 'egg':morph('chick');break;
+        case 'chick':morph('hen');break;
+        case 'seed':morph(rng()<0.7?'flower':'tree');break;
+        case 'carp':morph('dragon');grantAch(S,'ach_dragon');break;
+        case 'tree':inst.counter=0;spawn('apple');R.events.push({t:'treefruit',idx:i});break;
+        case 'fisher':inst.counter=0;spawn('fish');break;
+        case 'bat':{
+          inst.counter=0;
+          const cand=adjAlive(i).filter(j=>{
+            const c=cells[j],cd=SYMBOLS[c.id];
+            return c.id!=='gold'&&cd.r!=='l'&&c.id!=='bat';});
+          if(cand.length){
+            cand.sort((a,b)=>(SYMBOLS[cells[a].id].base+cells[a].perm)-(SYMBOLS[cells[b].id].base+cells[b].perm));
+            const j=cand[0],victim=cells[j];
+            R.transformed.push({idx:j,from:victim.id,to:'gold'});
+            victim.id='gold';victim.perm=0;victim.counter=0;victim.stored=0;
+            R.synergy.push([i,j]);discover('gold');
+          }
+          break;}
+      }
+    }
+  }
+  // 5. base payout
+  const P=R.payouts;
+  const ownedSas=SASINSU.filter(id=>S.inv.some(x=>x.id===id));
+  for(let i=0;i<GRID_N;i++){
+    const inst=cells[i];if(!inst||!alive[i]){P[i]=0;continue;}
+    const d=SYMBOLS[inst.id];
+    let p=d.base+inst.perm;
+    const adjCount=pred=>adjAlive(i).filter(j=>pred(cells[j])).length;
+    const mark=pred=>{adjAlive(i).forEach(j=>{if(pred(cells[j]))R.synergy.push([i,j]);});};
+    switch(inst.id){
+      case 'pig':{const n=adjCount(c=>SYMBOLS[c.id].tags.includes('food'));
+        if(n){p+=n;mark(c=>SYMBOLS[c.id].tags.includes('food'));}break;}
+      case 'bee':{const n=adjCount(c=>c.id==='flower');if(n){p+=2*n;mark(c=>c.id==='flower');}break;}
+      case 'dokkaebi':{const n=adjCount(c=>c.id==='sool');if(n){p+=3*n;mark(c=>c.id==='sool');}break;}
+      case 'merchant':{const n=adjCount(c=>SYMBOLS[c.id].tags.includes('coinlike'));
+        if(n){p+=n;mark(c=>SYMBOLS[c.id].tags.includes('coinlike'));}break;}
+      case 'lantern':{if(adjCount(c=>c.id==='wisp')){p*=3;mark(c=>c.id==='wisp');}break;}
+      case 'pawn':p+=Math.min(30,Math.floor(S.coins/12));break;
+      case 'pouch':p=Math.floor(rng()*10);break;
+      case 'cow':if(inst.counter>=3){p+=4;inst.counter=0;}break;
+      case 'rat':if(inst._ate){p+=3;inst._ate=false;}break;
+      case 'jar':{p=0;inst.stored+=S.relics.includes('brass')?2:1;break;}
+      case 'hen':if(rng()<0.15){spawn('egg');R.events.push({t:'lay',idx:i});}break;
+      case 'hwasubun':spawn('yeopjeon');break;
+      case 'cheongryong':case 'baekho':case 'jujak':case 'hyeonmu':{
+        p+=3*(ownedSas.length-1);
+        if(ownedSas.length===4)p+=25;
+        break;}
+      case 'ghost':{
+        if(rng()<0.1){const t=findAdj(i,()=>true);
+          if(t>=0)R.nullified.push(t);}
+        break;}
+    }
+    P[i]=p;
+  }
+  if(ownedSas.length===4)grantAch(S,'ach_sasinsu');
+  // 6. auras (additive)
+  for(let i=0;i<GRID_N;i++){
+    const inst=cells[i];if(!inst||!alive[i])continue;
+    if(inst.id==='bujeok')adjAlive(i).forEach(j=>{P[j]+=1;});
+    if(inst.id==='dragon')adjAlive(i).forEach(j=>{P[j]+=2;});
+  }
+  // 7. ghost nullify
+  R.nullified.forEach(j=>{if(alive[j])P[j]=0;});
+  // 8. multipliers
+  for(let i=0;i<GRID_N;i++){
+    const inst=cells[i];if(!inst||!alive[i])continue;
+    if(inst.id==='wisp')adjAlive(i).forEach(j=>{if(P[j]>0){P[j]=Math.ceil(P[j]*1.5);R.synergy.push([i,j]);}});
+    if(inst.id==='king')adjAlive(i).forEach(j=>{
+      if(SYMBOLS[cells[j].id].tags.includes('dk')&&P[j]>0){P[j]*=2;R.synergy.push([i,j]);}});
+  }
+  // 9. drum retrigger
+  for(let i=0;i<GRID_N;i++){
+    const inst=cells[i];if(!inst||!alive[i]||inst.id!=='drum')continue;
+    const t=findAdj(i,c=>true);
+    if(t>=0&&P[t]>0){P[i]+=P[t];R.drums.push({from:i,to:t});R.synergy.push([i,t]);}
+  }
+  // 10. mirror copy
+  for(let i=0;i<GRID_N;i++){
+    const inst=cells[i];if(!inst||!alive[i]||inst.id!=='mirror')continue;
+    const vals=adjAlive(i).map(j=>P[j]).sort((a,b)=>b-a);
+    if(vals.length){P[i]=Math.max(0,vals[0]);
+      if(S.relics.includes('bronze')&&vals.length>1)P[i]+=Math.floor(Math.max(0,vals[1])/2);
+      R.mirrors.push(i);}
+  }
+  // total
+  let total=P.reduce((a,b)=>a+b,0)+R.destructionBonus;
+  if(dbl)total*=2;
+  if(S.relics.includes('abacus')&&total>0)total+=Math.floor(total*0.05);
+  R.total=total;
+  S.coins=Math.max(0,S.coins+total);
+  S.spin++;META.stats.totalSpins++;
+  if(total>S.run.bestSpin)S.run.bestSpin=total;
+  if(total>META.stats.bestSpin){META.stats.bestSpin=total;}
+  if(total>=100)grantAch(S,'ach_bigspin');
+  if(S.coins>=1000)grantAch(S,'ach_rich');
+  checkInvAch(S);
+  saveMeta();
+  // post-spin: draft (마지막 승부 스핀 뒤엔 드래프트 없음)
+  if(!dbl){S.pendingDraft=genDraft(S);}
+  else S.pendingDraft=null;
+  S.lastChanceActive=false;
+  S.rentPendingAfterDraft=(S.spin>=S.nextRentAt);
+  return R;
+}
+
+function checkInvAch(S){
+  const ids=new Set(S.inv.map(x=>x.id));
+  const dkSet=['dokkaebi','wisp','bat','sool','lantern','king'].filter(id=>ids.has(id));
+  if(dkSet.length>=3)grantAch(S,'ach_dktrio');
+  if(S.inv.filter(x=>x.id==='pebble').length>=5)grantAch(S,'ach_pebble5');
+}
+
+// ---- draft ----
+function rollRarity(S){
+  const w={...RARITY_W};
+  if(S.relics.includes('bokjori')){w.u*=1.5;w.r*=1.5;w.l*=1.5;}
+  const sum=w.c+w.u+w.r+w.l;let x=S.rng()*sum;
+  for(const k of ['c','u','r','l']){if(x<w[k])return k;x-=w[k];}
+  return 'c';
+}
+function genDraft(S){
+  const n=S.relics.includes('chorong')?4:3;
+  const offers=[];let curseUsed=false;
+  for(let i=0;i<n;i++){
+    if(!curseUsed&&S.rng()<0.08){
+      offers.push(CURSE_IDS[Math.floor(S.rng()*CURSE_IDS.length)]);curseUsed=true;continue;
+    }
+    const rar=rollRarity(S);
+    let pool=Object.keys(SYMBOLS).filter(id=>{
+      const d=SYMBOLS[id];
+      return d.r===rar&&!d.curse&&!d.nodraft&&isUnlocked(id);
+    });
+    if(rar==='l'&&S.relics.includes('jokbo')){
+      const boosted=[];pool.forEach(id=>{boosted.push(id);
+        if(SASINSU.includes(id)){boosted.push(id,id);}});
+      pool=boosted;
+    }
+    offers.push(pool[Math.floor(S.rng()*pool.length)]);
+  }
+  return offers;
+}
+function draftPick(S,idx){
+  const id=S.pendingDraft[idx];
+  S.inv.push(mkInst(id,S));
+  if(id==='jar'&&S.relics.includes('kiln'))S.inv.push(mkInst(id,S));
+  if(id==='debt')S.coins+=20;
+  discover(id);checkInvAch(S);
+  S.pendingDraft=null;
+  return id;
+}
+function draftSkip(S){
+  S.coins+=S.relics.includes('bojagi')?3:1;
+  S.pendingDraft=null;
+}
+
+// ---- rent ----
+function payRent(S){
+  const due=rentDue(S);
+  if(S.coins>=due){
+    const margin=S.coins-due;
+    S.coins-=due;
+    if(margin<=due*0.1){S.run.nearmiss=true;grantAch(S,'ach_nearmiss');}
+    if(S.lastChanceUsed&&!S._clutchDone){S._clutchDone=true;grantAch(S,'ach_clutch');}
+    S.rentIdx++;S.nextRentAt=S.spin+rentInterval(S);
+    S.removals++;
+    grantAch(S,'ach_firstrent');
+    if(S.rentIdx>META.stats.bestRent){META.stats.bestRent=S.rentIdx;saveMeta();}
+    if(S.rentIdx===10&&!S.endless){S.win=true;grantAch(S,'ach_firstwin');
+      META.stats.wins++;saveMeta();}
+    if(S.rentIdx>=15)grantAch(S,'ach_endless15');
+    // relic offer
+    const unowned=Object.keys(RELICS).filter(id=>!S.relics.includes(id));
+    const offer=[];
+    while(offer.length<2&&unowned.length){
+      const k=Math.floor(S.rng()*unowned.length);
+      offer.push(unowned.splice(k,1)[0]);
+    }
+    S.pendingRelics=offer.length?offer:null;
+    S.rentPendingAfterDraft=false;
+    return {res:'paid',due,margin};
+  }
+  if(!S.lastChanceUsed){
+    S.lastChanceUsed=true;S.lastChanceActive=true;
+    return {res:'lastchance',due,short:due-S.coins};
+  }
+  S.over=true;META.stats.runs++;saveMeta();
+  return {res:'gameover',due,short:due-S.coins};
+}
+function relicPick(S,id){
+  S.relics.push(id);META.relicsSeen[id]=true;saveMeta();
+  S.pendingRelics=null;
+}
+function removeCost(S,id){
+  if(S.removals>0)return 0;
+  let c=(id==='debt')?15:5;
+  if(S.relics.includes('broom'))c=Math.ceil(c/2);
+  return c;
+}
+function removeSymbol(S,uid){
+  const k=S.inv.findIndex(x=>x.uid===uid);
+  if(k<0)return false;
+  const cost=removeCost(S,S.inv[k].id);
+  if(cost===0&&S.removals>0)S.removals--;
+  else if(S.coins>=cost)S.coins-=cost;
+  else return false;
+  S.inv.splice(k,1);
+  return true;
+}
+
+// ---- headless bot (for balance Monte Carlo) ----
+function botScoreOffer(S,id){
+  const d=SYMBOLS[id];const ids=S.inv.map(x=>x.id);
+  const count=q=>ids.filter(x=>x===q).length;
+  const tagCount=t=>ids.filter(x=>SYMBOLS[x].tags.includes(t)).length;
+  if(d.curse){
+    if(id==='debt'){const due=rentDue(S);
+      return (S.coins<due*0.6&&S.nextRentAt-S.spin<=2)?5:-99;}
+    return -99;
+  }
+  let s={c:1,u:3,r:6,l:12}[d.r];
+  switch(id){
+    case 'pig':s+=Math.min(4,tagCount('food'));break;
+    case 'bee':s+=2*Math.min(3,count('flower'));break;
+    case 'flower':s+=2*count('bee');break;
+    case 'dokkaebi':s+=3*Math.min(2,count('sool'));break;
+    case 'sool':s+=3*Math.min(2,count('dokkaebi'));break;
+    case 'merchant':s+=Math.min(4,tagCount('coinlike'));break;
+    case 'toad':s+=2*Math.min(3,count('pebble'));break;
+    case 'miner':s+=2*Math.min(2,count('ore'));break;
+    case 'ore':s+=2*Math.min(2,count('miner'));break;
+    case 'wisp':s+=4;break;
+    case 'bujeok':s+=2;break;
+    case 'lantern':s+=3*Math.min(1,count('wisp'));break;
+    case 'salt':s+=3*ids.filter(x=>SYMBOLS[x].curse).length;break;
+    case 'hourglass':s+=ids.filter(x=>SYMBOLS[x].grow).length>=2?3:0;break;
+    case 'pebble':s=-1;break;case 'seed':s+=1;break;
+  }
+  if(SASINSU.includes(id))s+=6*ids.filter(x=>SASINSU.includes(x)).length;
+  return s;
+}
+function botTick(S){
+  if(S.over)return false;
+  if(S.pendingDraft){
+    let best=-1,bs=-98;
+    S.pendingDraft.forEach((id,i)=>{const sc=botScoreOffer(S,id);if(sc>bs){bs=sc;best=i;}});
+    if(bs<2&&S.inv.length>16)draftSkip(S);else draftPick(S,best);
+    return true;
+  }
+  if(S.rentPendingAfterDraft){
+    const r=payRent(S);
+    if(r.res==='lastchance'){doSpin(S);const r2=payRent(S);
+      if(r2.res==='lastchance'){S.over=true;}}
+    return true;
+  }
+  if(S.pendingRelics){
+    const pref=['bokjori','abacus','chorong','pipe','bellows','brass','jokbo','sansin','broom','kiln','bojagi','bronze'];
+    const pick=S.pendingRelics.slice().sort((a,b)=>pref.indexOf(a)-pref.indexOf(b))[0];
+    relicPick(S,pick);
+    while(S.removals>0){
+      const bad=S.inv.find(x=>SYMBOLS[x.id].curse)||
+        (S.inv.filter(x=>x.id==='pebble').length>0&&!S.inv.some(x=>x.id==='toad')?S.inv.find(x=>x.id==='pebble'):null);
+      if(!bad)break;
+      removeSymbol(S,bad.uid);
+    }
+    return true;
+  }
+  if(S.win&&!S.endless)return false;
+  doSpin(S);
+  return true;
+}
+function botRun(seed,maxSpins){
+  const S=newRun(seed);
+  let guard=0;
+  while(!S.over&&!(S.win&&!S.endless)&&S.spin<(maxSpins||70)&&guard<600){
+    botTick(S);guard++;
+  }
+  return {win:S.win,rentsPaid:S.rentIdx,spins:S.spin,coins:S.coins,
+    bestSpin:S.run.bestSpin,inv:S.inv.length,over:S.over};
+}
+function monteCarlo(n,seedBase){
+  const res=[];const metaBackup=JSON.stringify(META);
+  for(let i=0;i<n;i++)res.push(botRun((seedBase||1000)+i*7919));
+  META=JSON.parse(metaBackup);saveMeta();
+  const rents=res.map(r=>r.rentsPaid).sort((a,b)=>a-b);
+  return {
+    n,winRate:res.filter(r=>r.win).length/n,
+    medianRents:rents[Math.floor(n/2)],
+    p25:rents[Math.floor(n*0.25)],p75:rents[Math.floor(n*0.75)],
+    avgBestSpin:Math.round(res.reduce((a,r)=>a+r.bestSpin,0)/n),
+    dist:rents.reduce((m,r)=>{m[r]=(m[r]||0)+1;return m;},{}),
+  };
+}
+// ================================================================
+// UI · FX · SOUND · BOOT
+// ================================================================
+const $=s=>document.querySelector(s);
+const el={title:$('#scr-title'),game:$('#scr-game'),grid:$('#grid'),svg:$('#synergy-svg'),
+  coin:$('#coin-num'),rentIdx:$('#rent-idx'),rentAmt:$('#rent-amt'),rentLeft:$('#rent-left'),
+  rentFill:$('#rent-fill'),rentBox:$('#rent-box'),caption:$('#caption'),spinBtn:$('#btn-spin'),
+  relicTray:$('#relic-tray'),overlay:$('#overlay'),panel:$('#ov-panel'),
+  invPanel:$('#inv-panel'),invList:$('#inv-list'),invCap:$('#inv-cap'),
+  toasts:$('#toasts'),flash:$('#flash'),vig:$('#vignette'),meta:$('#meta-line')};
+
+// ---------- SFX (WebAudio synth, no assets) ----------
+const SFX={ctx:null,on:true,
+  ac(){if(!this.ctx){try{this.ctx=new (window.AudioContext||window.webkitAudioContext)();}catch(e){this.on=false;}}return this.ctx;},
+  beep(f,dur,type,gain,when){const c=this.ac();if(!c||!this.on)return;
+    const o=c.createOscillator(),g=c.createGain();o.type=type||'sine';o.frequency.value=f;
+    const t=(when||c.currentTime);g.gain.setValueAtTime(gain||.15,t);
+    g.gain.exponentialRampToValueAtTime(.001,t+dur);
+    o.connect(g).connect(c.destination);o.start(t);o.stop(t+dur+.02);},
+  tick(i){this.beep(500+i*46,.09,'triangle',.12);},
+  coin(){this.beep(920,.07,'square',.06);this.beep(1380,.12,'sine',.09);},
+  whoosh(){const c=this.ac();if(!c||!this.on)return;
+    for(let i=0;i<6;i++)this.beep(180+i*38,.1,'sawtooth',.03,c.currentTime+i*.05);},
+  thud(){this.beep(95,.16,'sine',.28);},
+  jackpot(){const c=this.ac();if(!c||!this.on)return;
+    [523,659,784,1047,1319].forEach((f,i)=>this.beep(f,.28,'triangle',.14,c.currentTime+i*.08));},
+  bell(){this.beep(1568,.5,'sine',.14);this.beep(2093,.7,'sine',.07);},
+  laugh(){const c=this.ac();if(!c||!this.on)return;
+    [420,360,300,250].forEach((f,i)=>this.beep(f,.12,'sawtooth',.08,c.currentTime+i*.09));},
+  heartbeat(){this.beep(60,.14,'sine',.35);this.beep(55,.14,'sine',.3,this.ac()?this.ac().currentTime+.22:0);},
+  smash(){this.beep(220,.08,'sawtooth',.16);this.beep(110,.18,'square',.12);},
+};
+
+// ---------- FX ----------
+const fxc=$('#fx-canvas'),fxx=fxc.getContext('2d');
+let parts=[];
+function fxResize(){fxc.width=innerWidth;fxc.height=innerHeight;}
+addEventListener('resize',fxResize);fxResize();
+function burst(x,y,n,gold){
+  for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,v=2+Math.random()*5;
+    parts.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-2,life:1,
+      c:gold?`hsl(${42+Math.random()*15},95%,${55+Math.random()*20}%)`:`hsl(${260+Math.random()*40},80%,70%)`});}
+}
+(function fxLoop(){
+  fxx.clearRect(0,0,fxc.width,fxc.height);
+  parts=parts.filter(p=>p.life>0);
+  parts.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.18;p.life-=.02;
+    fxx.globalAlpha=Math.max(0,p.life);fxx.fillStyle=p.c;
+    fxx.beginPath();fxx.arc(p.x,p.y,3,0,7);fxx.fill();});
+  fxx.globalAlpha=1;requestAnimationFrame(fxLoop);
+})();
+function shake(){document.body.classList.remove('shake');void document.body.offsetWidth;document.body.classList.add('shake');}
+function goldFlash(){el.flash.classList.remove('go');void el.flash.offsetWidth;el.flash.classList.add('go');}
+function toast(msg){const d=document.createElement('div');d.className='toast';d.textContent=msg;
+  el.toasts.appendChild(d);setTimeout(()=>d.remove(),3500);}
+
+// title lantern embers
+const tlc=$('#title-lanterns');
+if(tlc){const tx=tlc.getContext('2d');let em=[];
+  function tlResize(){tlc.width=innerWidth;tlc.height=innerHeight;}
+  addEventListener('resize',tlResize);tlResize();
+  (function tl(){if(el.title.classList.contains('on')){
+    tx.clearRect(0,0,tlc.width,tlc.height);
+    if(em.length<40&&Math.random()<.3)em.push({x:Math.random()*tlc.width,y:tlc.height+10,
+      v:.4+Math.random()*.9,r:1+Math.random()*2.4,o:.2+Math.random()*.5});
+    em=em.filter(e=>e.y>-20);
+    em.forEach(e=>{e.y-=e.v;e.x+=Math.sin(e.y*.02)*.4;
+      tx.globalAlpha=e.o;tx.fillStyle='#ffb84d';
+      tx.beginPath();tx.arc(e.x,e.y,e.r,0,7);tx.fill();});
+    tx.globalAlpha=1;}
+    requestAnimationFrame(tl);})();
+}
+
+// ---------- game UI state ----------
+let S=null,busy=false;
+const FAST=()=>!!window.__dk.fast;
+const wait=ms=>new Promise(r=>setTimeout(r,FAST()?0:ms));
+const cellEls=[];
+(function buildGrid(){
+  for(let i=0;i<GRID_N;i++){
+    const c=document.createElement('div');c.className='cell';
+    c.innerHTML='<span class="em"></span>';
+    c.addEventListener('mouseenter',()=>hoverCell(i));
+    el.grid.appendChild(c);cellEls.push(c);
+  }
+})();
+let lastCells=new Array(GRID_N).fill(null);
+function hoverCell(i){
+  const c=lastCells[i];if(!c){return;}
+  const d=SYMBOLS[c.id];
+  let extra='';
+  const inst=S&&S.inv.find(x=>x.uid===c.uid);
+  if(inst){if(d.grow)extra=` (성장 ${inst.counter}/${d.grow})`;
+    if(c.id==='jar')extra=` (저장 ${inst.stored}닢)`;
+    if(c.id==='ore')extra=` (가치 ${1+Math.floor(inst.counter/3)})`;
+    if(inst.perm)extra+=` [+${inst.perm} 강화]`;}
+  el.caption.innerHTML=`${d.e} <b>${d.nm}</b> · ${RAR[d.r]}${extra} — ${d.desc}`;
+}
+function renderCell(i,cd){
+  const div=cellEls[i],em=div.querySelector('.em');
+  div.className='cell';
+  div.querySelectorAll('.badge').forEach(b=>b.remove());
+  if(!cd){em.textContent='';lastCells[i]=null;return;}
+  const d=SYMBOLS[cd.id];
+  em.textContent=d.e;
+  div.classList.add('r-'+d.r);
+  if(d.curse)div.classList.add('curse');
+  const inst=S.inv.find(x=>x.uid===cd.uid);
+  if(inst){
+    if(d.grow){const b=document.createElement('span');b.className='badge';
+      b.textContent=`${inst.counter}/${d.grow}`;div.appendChild(b);}
+    else if(cd.id==='jar'&&inst.stored>0){const b=document.createElement('span');
+      b.className='badge store';b.textContent=inst.stored;div.appendChild(b);}
+    else if(cd.id==='ore'){const b=document.createElement('span');b.className='badge store';
+      b.textContent='x'+(1+Math.floor(inst.counter/3));div.appendChild(b);}
+  }
+  lastCells[i]=cd;
+}
+function floatAt(i,txt,cls){
+  const f=document.createElement('span');f.className='floater '+(cls||'');
+  f.textContent=txt;cellEls[i].appendChild(f);
+  setTimeout(()=>f.remove(),1000);
+}
+function synergyLine(a,b){
+  if(FAST())return;
+  const ra=cellEls[a].getBoundingClientRect(),rb=cellEls[b].getBoundingClientRect(),
+    rg=el.svg.getBoundingClientRect();
+  const ln=document.createElementNS('http://www.w3.org/2000/svg','line');
+  ln.setAttribute('x1',ra.left+ra.width/2-rg.left);ln.setAttribute('y1',ra.top+ra.height/2-rg.top);
+  ln.setAttribute('x2',rb.left+rb.width/2-rg.left);ln.setAttribute('y2',rb.top+rb.height/2-rg.top);
+  ln.classList.add('show');el.svg.appendChild(ln);
+  setTimeout(()=>ln.remove(),750);
+}
+function setCoins(n){el.coin.textContent=n;}
+function refreshTop(){
+  if(!S)return;
+  setCoins(S.coins);
+  el.rentIdx.textContent=S.rentIdx+1;
+  el.rentAmt.textContent=rentDue(S);
+  const left=Math.max(0,S.nextRentAt-S.spin);
+  el.rentLeft.textContent=left;
+  const iv=rentInterval(S);
+  el.rentFill.style.width=(100*(iv-left)/iv)+'%';
+  const danger=left<=1&&S.coins<rentDue(S);
+  el.rentBox.classList.toggle('danger',danger);
+  el.relicTray.innerHTML=S.relics.map(id=>
+    `<span class="relic-chip" title="${RELICS[id].nm}: ${RELICS[id].desc}">${RELICS[id].e}</span>`).join('');
+  refreshInv();
+}
+function refreshInv(){
+  if(!S)return;
+  const n=S.inv.length;
+  el.invCap.textContent=`${n}개 보유 / 슬롯 20칸`+(n>GRID_N?` — 매 스핀 ${GRID_N}개만 무작위로 실립니다!`:'')
+    +` · 무료 제거권 ${S.removals}장`;
+  el.invCap.classList.toggle('warn',n>GRID_N);
+  const groups={};
+  S.inv.forEach(x=>{(groups[x.id]=groups[x.id]||[]).push(x);});
+  el.invList.innerHTML='';
+  Object.keys(groups).sort((a,b)=>'culr'.indexOf(SYMBOLS[b].r)-'culr'.indexOf(SYMBOLS[a].r)).forEach(id=>{
+    const d=SYMBOLS[id],arr=groups[id];
+    const div=document.createElement('div');div.className='inv-item';
+    const cost=removeCost(S,id);
+    div.innerHTML=`<span class="em">${d.e}</span>
+      <span class="nm">${d.nm} x${arr.length}<small>${d.desc}</small></span>
+      <button class="rm">${cost===0?'제거(무료)':'제거 '+cost+'닢'}</button>`;
+    div.querySelector('.rm').addEventListener('click',()=>{
+      if(removeSymbol(S,arr[0].uid)){SFX.smash();refreshTop();drainAch();}
+      else toast('엽전이 부족합니다');
+    });
+    el.invList.appendChild(div);
+  });
+}
+function drainAch(){
+  if(!S)return;
+  while(S.achQueue.length){
+    const k=S.achQueue.shift(),a=ACHIEVEMENTS[k];
+    toast(`🏆 업적 달성: ${a.nm}`);SFX.bell();
+    if(a.unlock)setTimeout(()=>toast(`✨ 새 심볼 해금: ${SYMBOLS[a.unlock].e} ${SYMBOLS[a.unlock].nm}`),700);
+  }
+}
+
+// ---------- overlays ----------
+function ovShow(html,cls){el.panel.className='';if(cls)el.panel.classList.add(cls);
+  el.panel.innerHTML=html;el.overlay.classList.add('on');}
+function ovHide(){el.overlay.classList.remove('on');}
+function cardHTML(id,i,extraCls){
+  const d=SYMBOLS[id];
+  return `<div class="card r-${d.r} ${d.curse?'curse':''} ${extraCls||''}" data-i="${i}">
+    <div class="c-em">${d.e}</div><div class="c-nm">${d.nm}</div>
+    <div class="c-desc">${d.desc}</div>
+    <div class="c-rar">${d.curse?'⚠ 저주':RAR[d.r]}</div></div>`;
+}
+function showDraft(){
+  const offers=S.pendingDraft;
+  const anyLegend=offers.some(id=>SYMBOLS[id].r==='l');
+  if(anyLegend){SFX.jackpot();goldFlash();}
+  ovShow(`<h2>손님이 물건을 내놓았다</h2>
+    <div class="ov-sub">보따리: ${S.inv.length}개 · 하나를 고르거나 거절한다</div>
+    <div class="cards">${offers.map((id,i)=>cardHTML(id,i,SYMBOLS[id].r==='l'?'legend-entrance':'')).join('')}</div>
+    <div class="ov-row"><button class="btn ghost" id="ov-skip">거절한다 (+${S.relics.includes('bojagi')?3:1}닢)</button></div>`);
+  el.panel.querySelectorAll('.card').forEach(c=>c.addEventListener('click',()=>{
+    const id=draftPick(S,+c.dataset.i);SFX.coin();
+    if(SYMBOLS[id].curse)SFX.laugh();
+    ovHide();drainAch();refreshTop();afterDraftFlow();
+  }));
+  $('#ov-skip').addEventListener('click',()=>{draftSkip(S);SFX.tick(2);ovHide();refreshTop();afterDraftFlow();});
+}
+function afterDraftFlow(){
+  if(S.rentPendingAfterDraft)resolveRent();
+  else idle();
+}
+function resolveRent(){
+  const r=payRent(S);
+  drainAch();refreshTop();
+  if(r.res==='paid'){
+    SFX.bell();
+    const nm=r.margin<=r.due*0.1;
+    if(nm){shake();toast('😅 아슬아슬하게 냈다!');}
+    if(S.win&&!S.endless){showVictory();return;}
+    ovShow(`<h2>자릿세 완납! 🧧</h2>
+      <div class="ov-sub">-${r.due}닢 · 잔액 ${S.coins}닢 ${nm?'· <b style="color:var(--red)">간발의 차!</b>':''}
+      <br>무료 제거권 +1장</div>
+      ${S.pendingRelics?`<div class="ov-sub" style="color:var(--gold)">시장왕이 보물을 내밀었다 — 하나를 고르시오</div>
+      <div class="cards">${S.pendingRelics.map((id,i)=>{
+        const d=RELICS[id];
+        return `<div class="card r-r" data-r="${id}"><div class="c-em">${d.e}</div>
+          <div class="c-nm">${d.nm}</div><div class="c-desc">${d.desc}</div>
+          <div class="c-rar">보물</div></div>`;}).join('')}</div>`:
+      `<div class="ov-row"><button class="btn" id="ov-ok">계속</button></div>`}`);
+    if(S.pendingRelics){
+      el.panel.querySelectorAll('.card').forEach(c=>c.addEventListener('click',()=>{
+        relicPick(S,c.dataset.r);SFX.jackpot();ovHide();refreshTop();idle();
+      }));
+    }else $('#ov-ok').addEventListener('click',()=>{ovHide();idle();});
+  }else if(r.res==='lastchance'){
+    SFX.heartbeat();el.vig.classList.add('on');
+    ovShow(`<h2 style="color:var(--red)">자릿세가 부족하다...</h2>
+      <div class="ov-sub">필요 ${r.due}닢 · 부족 <b style="color:var(--red)">${r.short}닢</b></div>
+      <p style="margin-bottom:16px">시장왕이 마지막 기회를 준다.<br>
+      <b>단 한 번의 스핀, 모든 지급 2배.</b><br>이걸로 채우지 못하면 폐업이다.</p>
+      <div class="ov-row"><button class="btn" id="ov-lc" style="background:linear-gradient(180deg,#ff7d6d,#d23a3a);color:#fff">마지막 승부</button></div>`,'lastchance');
+    $('#ov-lc').addEventListener('click',()=>{
+      ovHide();el.spinBtn.classList.add('lastchance');el.spinBtn.textContent='마지막 승부!';
+      el.spinBtn.disabled=false;busy=false;
+    });
+  }else{showGameover(r);}
+}
+function showVictory(){
+  el.vig.classList.remove('on');
+  SFX.jackpot();goldFlash();burst(innerWidth/2,innerHeight/3,60,true);
+  ovShow(`<h2>👑 시장의 주인!</h2>
+    <div class="ov-sub">자릿세 10회 완납 — 도깨비들이 당신을 인정했다</div>
+    <p style="margin-bottom:14px">스핀 ${S.spin}회 · 최고 스핀 ${S.run.bestSpin}닢 · 잔액 ${S.coins}닢</p>
+    <div class="ov-row">
+      <button class="btn" id="ov-endless">무한 모드 계속</button>
+      <button class="btn ghost" id="ov-quit">폐점하고 타이틀로</button></div>`);
+  $('#ov-endless').addEventListener('click',()=>{S.endless=true;ovHide();refreshTop();idle();});
+  $('#ov-quit').addEventListener('click',()=>{META.stats.runs++;saveMeta();ovHide();toTitle();});
+}
+function showGameover(r){
+  el.vig.classList.remove('on');
+  SFX.laugh();shake();
+  ovShow(`<h2 style="color:var(--red)">폐업 💸</h2>
+    <div class="ov-sub">자릿세 ${r.due}닢 중 ${r.short}닢이 모자랐다</div>
+    <p style="margin-bottom:14px">버틴 회차 ${S.rentIdx} · 스핀 ${S.spin}회 · 최고 스핀 ${S.run.bestSpin}닢</p>
+    <div class="ov-row">
+      <button class="btn" id="ov-retry">다시 개업</button>
+      <button class="btn ghost" id="ov-title">타이틀로</button></div>`);
+  $('#ov-retry').addEventListener('click',()=>{ovHide();startRun();});
+  $('#ov-title').addEventListener('click',()=>{ovHide();toTitle();});
+}
+function showCodex(){
+  const symRows=Object.keys(SYMBOLS).map(id=>{
+    const d=SYMBOLS[id],known=META.disc[id];
+    return `<div class="dex ${known?'':'unknown'}" title="${known?d.nm+': '+d.desc:'???'}">
+      <span class="em">${known?d.e:'❓'}</span>${known?d.nm:'???'}</div>`;}).join('');
+  const achRows=Object.keys(ACHIEVEMENTS).map(k=>{
+    const a=ACHIEVEMENTS[k],done=!!META.ach[k];
+    return `<div class="ach ${done?'done':''}"><span class="a-ic">${done?a.ic:'🔒'}</span>
+      <span>${a.nm}<small>${a.desc}</small></span></div>`;}).join('');
+  const st=META.stats;
+  ovShow(`<h2>도감 · 업적</h2>
+    <div class="ov-sub">발견 ${Object.keys(META.disc).length}/${Object.keys(SYMBOLS).length}종 ·
+      판 수 ${st.runs} · 승리 ${st.wins} · 최고 스핀 ${st.bestSpin}닢 · 최고 회차 ${st.bestRent}</div>
+    <div id="codex-grid">${symRows}</div>
+    <h2 style="font-size:18px">업적</h2><div style="max-height:200px;overflow-y:auto">${achRows}</div>
+    <div class="ov-row" style="margin-top:12px"><button class="btn ghost" id="ov-close">닫기</button></div>`);
+  $('#ov-close').addEventListener('click',ovHide);
+}
+
+// ---------- spin orchestration ----------
+async function uiSpin(){
+  if(!S||busy||S.over)return;
+  if(S.pendingDraft||S.pendingRelics){return;}
+  busy=true;el.spinBtn.disabled=true;
+  const wasLC=S.lastChanceActive;
+  el.spinBtn.classList.remove('lastchance');el.spinBtn.textContent='돌리기';
+  SFX.whoosh();
+  // rolling animation
+  if(!FAST()){
+    const ids=Object.keys(SYMBOLS);
+    cellEls.forEach(c=>{c.classList.add('rolling');});
+    const iv=setInterval(()=>{cellEls.forEach(c=>{
+      c.querySelector('.em').textContent=SYMBOLS[ids[Math.floor(Math.random()*ids.length)]].e;});},70);
+    await wait(520);clearInterval(iv);
+    cellEls.forEach(c=>c.classList.remove('rolling'));
+  }
+  const R=doSpin(S);
+  // reveal
+  R.cells.forEach((cd,i)=>renderCell(i,cd));
+  SFX.thud();
+  await wait(180);
+  // destroyed
+  for(const d of R.destroyed){
+    cellEls[d.idx].classList.add('destroyed');SFX.smash();
+    floatAt(d.idx,'💥');
+  }
+  if(R.destroyed.length)await wait(320);
+  // transforms
+  for(const t of R.transformed){
+    const cd=R.cells[t.idx]; // may be stale id; render live from inv
+    renderCell(t.idx,{uid:(cd?cd.uid:0),id:t.to});
+    cellEls[t.idx].classList.add('pop');
+    floatAt(t.idx,SYMBOLS[t.from].e+'→'+SYMBOLS[t.to].e,'big');
+    SFX.jackpot();
+    await wait(240);
+  }
+  // synergy lines
+  R.synergy.slice(0,14).forEach(([a,b],k)=>setTimeout(()=>synergyLine(a,b),FAST()?0:k*60));
+  // payout cascade
+  let running=S.coins-R.total; if(running<0)running=0;
+  setCoins(running);
+  let tickI=0;
+  for(let i=0;i<GRID_N;i++){
+    const p=R.payouts[i];
+    if(p===0)continue;
+    cellEls[i].classList.remove('pop');void cellEls[i].offsetWidth;
+    cellEls[i].classList.add('pop');
+    floatAt(i,(p>0?'+':'')+p,(p<0?'neg':(p>=8?'big':'')));
+    SFX.tick(tickI++);
+    running+=p;setCoins(Math.max(0,running));
+    await wait(85);
+  }
+  if(R.destructionBonus){
+    toast(`💥 파괴 보상 +${R.destructionBonus}닢`);
+    running+=R.destructionBonus;setCoins(Math.max(0,running));
+    await wait(150);
+  }
+  setCoins(S.coins);
+  // spawns
+  if(R.spawned.length){
+    toast('🎒 보따리에 추가: '+R.spawned.map(id=>SYMBOLS[id].e).join(' '));
+  }
+  // big win celebration
+  if(R.total>=100){shake();goldFlash();SFX.jackpot();
+    burst(innerWidth/2,innerHeight/2.4,50,true);toast(`🎆 대박! +${R.total}닢`);}
+  else if(R.total>=50){goldFlash();SFX.coin();burst(innerWidth/2,innerHeight/2.4,24,true);}
+  else if(R.total>0)SFX.coin();
+  refreshTop();drainAch();
+  await wait(280);
+  busy=false;
+  // flow
+  if(wasLC){resolveRent();return;}
+  if(S.pendingDraft){showDraft();return;}
+  afterDraftFlow();
+}
+function idle(){
+  if(!S||S.over)return;
+  el.spinBtn.disabled=false;busy=false;
+  el.vig.classList.remove('on');
+  refreshTop();
+}
+
+// ---------- screens ----------
+function refreshMetaLine(){
+  const st=META.stats;
+  el.meta.textContent=`판 수 ${st.runs} · 승리 ${st.wins} · 도감 ${Object.keys(META.disc).length}/${Object.keys(SYMBOLS).length} · 최고 회차 ${st.bestRent}`;
+}
+function toTitle(){
+  S=null;el.game.classList.remove('on');el.title.classList.add('on');
+  el.vig.classList.remove('on');refreshMetaLine();
+}
+function startRun(seed){
+  S=newRun(seed!=null?seed:((Math.random()*2**31)|0));
+  S.inv.forEach(x=>discover(x.id));
+  el.title.classList.remove('on');el.game.classList.add('on');
+  lastCells=new Array(GRID_N).fill(null);
+  cellEls.forEach((c,i)=>renderCell(i,null));
+  el.caption.innerHTML='<b>돌리기</b>를 눌러 개장! 5스핀마다 자릿세를 내야 한다.';
+  el.spinBtn.textContent='돌리기';el.spinBtn.classList.remove('lastchance');
+  ovHide();idle();
+}
+
+// ---------- wiring ----------
+$('#btn-newrun').addEventListener('click',()=>{SFX.coin();startRun();});
+$('#btn-codex').addEventListener('click',()=>{showCodex();});
+el.spinBtn.addEventListener('click',uiSpin);
+$('#btn-inv').addEventListener('click',()=>{refreshInv();el.invPanel.classList.add('on');});
+$('#btn-inv-close').addEventListener('click',()=>el.invPanel.classList.remove('on'));
+addEventListener('keydown',e=>{
+  if(e.code==='Space'||e.code==='Enter'){
+    if(S&&!busy&&!el.overlay.classList.contains('on')){e.preventDefault();uiSpin();}
+  }
+});
+refreshMetaLine();
+
+// ---------- debug / test hooks ----------
+window.__dk={
+  fast:false,
+  get S(){return S;},
+  startRun,uiSpin,
+  draftPick:(i)=>{const id=draftPick(S,i);ovHide();drainAch();refreshTop();afterDraftFlow();return id;},
+  draftSkip:()=>{draftSkip(S);ovHide();refreshTop();afterDraftFlow();},
+  relicPick:(id)=>{relicPick(S,id||S.pendingRelics[0]);ovHide();refreshTop();idle();},
+  engine:{newRun,doSpin,genDraft,draftPick,draftSkip,payRent,relicPick,removeSymbol,botRun,monteCarlo,rentDue},
+  mc:monteCarlo,botRun,
+  meta:()=>META,
+  resetMeta:()=>{META=loadMeta.call(null);localStorage.removeItem(META_KEY);META=loadMeta();refreshMetaLine();},
+};
+</script>
+</body>
+</html>
